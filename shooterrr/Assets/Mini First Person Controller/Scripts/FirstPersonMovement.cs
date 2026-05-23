@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class FirstPersonMovement : MonoBehaviour
@@ -23,7 +24,14 @@ public class FirstPersonMovement : MonoBehaviour
     private bool hasStarted = false;
 
     [Header("Movement Settings")]
-    public float movementThreshold = 0.05f; // Порог чувствительности движения
+    public float movementThreshold = 0.05f;
+
+    [Header("Aiming Settings")]
+    public string aimingBoolParam = "IsAiming";
+    private bool isAiming = false;
+
+    [Header("UI")]
+    public GameObject crosshairUI; // Перетащи сюда объект прицела (Image, Canvas и т.д.)
 
     private Rigidbody rigidbody;
     private bool isWalking = false;
@@ -59,13 +67,39 @@ public class FirstPersonMovement : MonoBehaviour
         {
             animator.SetFloat(movementSpeedParam, 0f);
             animator.SetBool(isWalkingParam, false);
+            animator.SetBool(aimingBoolParam, false);
         }
     }
 
     void Update()
     {
-        // Обновляем IsRunning в Update для совместимости
         IsRunning = false;
+        HandleAiming();
+    }
+
+    void HandleAiming()
+    {
+        if (!hasStarted) return;
+        if (animator == null) return;
+
+        // Состояние правой кнопки мыши
+        bool isRightMousePressed = Input.GetMouseButton(1);
+
+        // Устанавливаем параметр анимации
+        animator.SetBool(aimingBoolParam, isRightMousePressed);
+        isAiming = isRightMousePressed;
+
+        // Скрываем или показываем прицел
+        if (crosshairUI != null)
+        {
+            crosshairUI.SetActive(!isRightMousePressed); // Скрываем при прицеливании
+        }
+
+        // Отладка (можно закомментировать)
+        if (Input.GetMouseButtonDown(1))
+            Debug.Log("Прицеливание включено, прицел скрыт");
+        if (Input.GetMouseButtonUp(1))
+            Debug.Log("Прицеливание выключено, прицел показан");
     }
 
     void FixedUpdate()
@@ -74,52 +108,41 @@ public class FirstPersonMovement : MonoBehaviour
 
         IsRunning = false;
 
-        // Получаем целевые параметры движения
         float targetSpeed = walkSpeed;
         if (speedOverrides.Count > 0)
         {
             targetSpeed = speedOverrides[speedOverrides.Count - 1]();
         }
 
-        // Получаем ввод
-        float horizontal = Input.GetAxisRaw("Horizontal"); // Используем GetAxisRaw для мгновенной реакции
+        float horizontal = Input.GetAxisRaw("Horizontal");
         float vertical = Input.GetAxisRaw("Vertical");
 
-        // Проверяем движение с порогом чувствительности
         bool isMoving = Mathf.Abs(horizontal) > movementThreshold || Mathf.Abs(vertical) > movementThreshold;
 
-        // Применяем движение
         if (isMoving)
         {
             Vector3 movement = transform.right * horizontal + transform.forward * vertical;
-            movement = movement.normalized * targetSpeed; // Нормализуем для диагонального движения
+            movement = movement.normalized * targetSpeed;
             movement.y = rigidbody.velocity.y;
             rigidbody.velocity = movement;
         }
         else
         {
-            // Останавливаем движение по горизонтали, сохраняем вертикальную скорость (гравитация)
             rigidbody.velocity = new Vector3(0, rigidbody.velocity.y, 0);
         }
 
-        // Обновляем анимации
         UpdateAnimations(isMoving);
-
-        // Для отладки (можно убрать после проверки)
-        // Debug.Log($"Moving: {isMoving}, Horizontal: {horizontal}, Vertical: {vertical}");
     }
 
     void UpdateAnimations(bool isMoving)
     {
         if (animator == null) return;
 
-        // Анимация стояния
         if (!isMoving)
         {
             animator.SetFloat(movementSpeedParam, 0f);
             animator.SetBool(isWalkingParam, false);
         }
-        // Анимация ходьбы
         else
         {
             animator.SetFloat(movementSpeedParam, 1f);
@@ -144,6 +167,12 @@ public class FirstPersonMovement : MonoBehaviour
         {
             animator.SetFloat(movementSpeedParam, 0);
             animator.SetBool(isWalkingParam, false);
+            animator.SetBool(aimingBoolParam, false);
         }
+    }
+
+    public bool IsAiming()
+    {
+        return isAiming;
     }
 }
