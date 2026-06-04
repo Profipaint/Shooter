@@ -30,8 +30,17 @@ public class FirstPersonMovement : MonoBehaviour
     public string aimingBoolParam = "IsAiming";
     private bool isAiming = false;
 
+    [Header("Shoot Settings")]
+    public string shootAnimationTrigger = "CrossbowShoot";
+
+    [Header("Reload Settings")]
+    public string reloadAnimationTrigger = "Reload";
+
+    [Header("Melee Settings")]
+    public string meleeAnimationTrigger = "MeleeAttack";
+
     [Header("UI")]
-    public GameObject crosshairUI; // Перетащи сюда объект прицела (Image, Canvas и т.д.)
+    public GameObject crosshairUI;
 
     private Rigidbody rigidbody;
     private bool isWalking = false;
@@ -75,6 +84,9 @@ public class FirstPersonMovement : MonoBehaviour
     {
         IsRunning = false;
         HandleAiming();
+        HandleShoot();
+        HandleReload();
+        HandleMelee();
     }
 
     void HandleAiming()
@@ -82,24 +94,51 @@ public class FirstPersonMovement : MonoBehaviour
         if (!hasStarted) return;
         if (animator == null) return;
 
-        // Состояние правой кнопки мыши
         bool isRightMousePressed = Input.GetMouseButton(1);
-
-        // Устанавливаем параметр анимации
+        
         animator.SetBool(aimingBoolParam, isRightMousePressed);
         isAiming = isRightMousePressed;
-
-        // Скрываем или показываем прицел
+        
         if (crosshairUI != null)
         {
-            crosshairUI.SetActive(!isRightMousePressed); // Скрываем при прицеливании
+            crosshairUI.SetActive(!isRightMousePressed);
         }
+    }
 
-        // Отладка (можно закомментировать)
-        if (Input.GetMouseButtonDown(1))
-            Debug.Log("Прицеливание включено, прицел скрыт");
-        if (Input.GetMouseButtonUp(1))
-            Debug.Log("Прицеливание выключено, прицел показан");
+    void HandleShoot()
+    {
+        if (!hasStarted) return;
+        if (animator == null) return;
+        
+        if (Input.GetMouseButtonDown(0))
+        {
+            animator.SetTrigger(shootAnimationTrigger);
+            Debug.Log("Выстрел - CrossbowShoot");
+        }
+    }
+
+    void HandleReload()
+    {
+        if (!hasStarted) return;
+        if (animator == null) return;
+        
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            animator.SetTrigger(reloadAnimationTrigger);
+            Debug.Log("Перезарядка - Reload");
+        }
+    }
+
+    void HandleMelee()
+    {
+        if (!hasStarted) return;
+        if (animator == null) return;
+        
+        if (Input.GetKeyDown(KeyCode.F))
+        {
+            animator.SetTrigger(meleeAnimationTrigger);
+            Debug.Log("Удар арбалетом - MeleeAttack");
+        }
     }
 
     void FixedUpdate()
