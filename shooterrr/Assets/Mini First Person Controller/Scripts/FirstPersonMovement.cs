@@ -29,6 +29,11 @@ public class FirstPersonMovement : MonoBehaviour
     [Header("Aiming Settings")]
     public string aimingBoolParam = "IsAiming";
     private bool isAiming = false;
+    
+    [Header("Aiming Walk Animation")]
+    public bool enableAimingWalkAnimation = true;
+    public string aimingWalkBoolParam = "IsAimingWalk"; // Ваш параметр для прицельной ходьбы
+    public float aimingWalkSpeedMultiplier = 0.5f; // Множитель скорости при прицельной ходьбе
 
     [Header("Shoot Settings")]
     public string shootAnimationTrigger = "CrossbowShoot";
@@ -41,6 +46,14 @@ public class FirstPersonMovement : MonoBehaviour
 
     [Header("UI")]
     public GameObject crosshairUI;
+    
+    [Header("Camera Bobbing")]
+    public bool enableCameraBob = true;
+    public float bobSpeed = 10f;
+    public float bobAmount = 0.05f;
+    private Transform cameraTransform;
+    private float defaultCameraY;
+    private float bobTimer = 0;
 
     private Rigidbody rigidbody;
     private bool isWalking = false;
@@ -65,6 +78,21 @@ public class FirstPersonMovement : MonoBehaviour
         }
 
         StartCoroutine(EnableMovementAfterStart());
+        
+        // Инициализация камеры для бобинга
+        if (enableCameraBob)
+        {
+            if (Camera.main != null)
+            {
+                cameraTransform = Camera.main.transform;
+                defaultCameraY = cameraTransform.localPosition.y;
+            }
+            else
+            {
+                Debug.LogWarning("Camera.main not found! Camera bobbing disabled.");
+                enableCameraBob = false;
+            }
+        }
     }
 
     System.Collections.IEnumerator EnableMovementAfterStart()
@@ -77,6 +105,12 @@ public class FirstPersonMovement : MonoBehaviour
             animator.SetFloat(movementSpeedParam, 0f);
             animator.SetBool(isWalkingParam, false);
             animator.SetBool(aimingBoolParam, false);
+            
+            // Инициализация параметра прицельной ходьбы
+            if (enableAimingWalkAnimation)
+            {
+                animator.SetBool(aimingWalkBoolParam, false);
+            }
         }
     }
 
@@ -87,6 +121,21 @@ public class FirstPersonMovement : MonoBehaviour
         HandleShoot();
         HandleReload();
         HandleMelee();
+        
+        // Обработка покачивания камеры
+        if (enableCameraBob && hasStarted && IsPlayerMoving() && !isAiming)
+        {
+            HandleCameraBob();
+        }
+        else if (enableCameraBob && hasStarted && IsPlayerMoving() && isAiming && enableAimingWalkAnimation)
+        {
+            // Лёгкое покачивание при прицельной ходьбе (опционально)
+            HandleAimingCameraBob();
+        }
+        else if (enableCameraBob)
+        {
+            ResetCameraBob();
+        }
     }
 
     void HandleAiming()
@@ -102,6 +151,13 @@ public class FirstPersonMovement : MonoBehaviour
         if (crosshairUI != null)
         {
             crosshairUI.SetActive(!isRightMousePressed);
+        }
+        
+        // Обновляем состояние прицельной ходьбы при изменении состояния прицеливания
+        if (enableAimingWalkAnimation && hasStarted)
+        {
+            bool isMoving = IsPlayerMoving();
+            UpdateAimingWalkAnimation(isMoving);
         }
     }
 
@@ -152,6 +208,12 @@ public class FirstPersonMovement : MonoBehaviour
         {
             targetSpeed = speedOverrides[speedOverrides.Count - 1]();
         }
+        
+        // Уменьшаем скорость при прицеливании, если включена опция
+        if (isAiming && enableAimingWalkAnimation)
+        {
+            targetSpeed *= aimingWalkSpeedMultiplier;
+        }
 
         float horizontal = Input.GetAxisRaw("Horizontal");
         float vertical = Input.GetAxisRaw("Vertical");
@@ -181,11 +243,39 @@ public class FirstPersonMovement : MonoBehaviour
         {
             animator.SetFloat(movementSpeedParam, 0f);
             animator.SetBool(isWalkingParam, false);
+            
+            // Сбрасываем прицельную ходьбу
+            if (enableAimingWalkAnimation)
+            {
+                animator.SetBool(aimingWalkBoolParam, false);
+            }
         }
         else
         {
+            // Обычная ходьба
             animator.SetFloat(movementSpeedParam, 1f);
             animator.SetBool(isWalkingParam, true);
+            
+            // Обновляем анимацию прицельной ходьбы
+            if (enableAimingWalkAnimation)
+            {
+                UpdateAimingWalkAnimation(true);
+            }
+        }
+    }
+    
+    // Новый метод для управления анимацией прицельной ходьбы
+    void UpdateAimingWalkAnimation(bool isMoving)
+    {
+        if (animator == null) return;
+        
+        // Включаем IsAimingWalk только если: прицеливаемся И двигаемся
+        bool shouldAimingWalk = isAiming && isMoving && enableAimingWalkAnimation;
+        animator.SetBool(aimingWalkBoolParam, shouldAimingWalk);
+        
+        if (shouldAimingWalk)
+        {
+            Debug.Log("Прицельная ходьба активна - IsAimingWalk = true");
         }
     }
 
@@ -207,11 +297,61 @@ public class FirstPersonMovement : MonoBehaviour
             animator.SetFloat(movementSpeedParam, 0);
             animator.SetBool(isWalkingParam, false);
             animator.SetBool(aimingBoolParam, false);
+            
+            if (enableAimingWalkAnimation)
+            {
+                animator.SetBool(aimingWalkBoolParam, false);
+            }
         }
     }
 
     public bool IsAiming()
     {
         return isAiming;
+    }
+    
+    // Новый метод для проверки движения
+    public bool IsPlayerMoving()
+    {
+        float horizontal = Input.GetAxisRaw("Horizontal");
+        float vertical = Input.GetAxisRaw("Vertical");
+        return Mathf.Abs(horizontal) > movementThreshold || Mathf.Abs(vertical) > movementThreshold;
+    }
+    
+    // Методы для покачивания камеры
+    private void HandleCameraBob()
+    {
+        if (cameraTransform == null) return;
+        
+        bobTimer += Time.deltaTime * bobSpeed;
+        
+        Vector3 newPos = cameraTransform.localPosition;
+        newPos.y = defaultCameraY + Mathf.Sin(bobTimer) * bobAmount;
+        
+        cameraTransform.localPosition = newPos;
+    }
+    
+    private void HandleAimingCameraBob()
+    {
+        if (cameraTransform == null) return;
+        
+        // Уменьшенное покачивание при прицельной ходьбе (50% от обычного)
+        float aimingBobAmount = bobAmount * 0.5f;
+        bobTimer += Time.deltaTime * bobSpeed;
+        
+        Vector3 newPos = cameraTransform.localPosition;
+        newPos.y = defaultCameraY + Mathf.Sin(bobTimer) * aimingBobAmount;
+        
+        cameraTransform.localPosition = newPos;
+    }
+    
+    private void ResetCameraBob()
+    {
+        if (cameraTransform == null) return;
+        
+        bobTimer = 0;
+        Vector3 newPos = cameraTransform.localPosition;
+        newPos.y = Mathf.Lerp(newPos.y, defaultCameraY, Time.deltaTime * 10f);
+        cameraTransform.localPosition = newPos;
     }
 }
