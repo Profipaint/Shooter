@@ -21,7 +21,9 @@ public class Enemy : MonoBehaviour
     public float attackDamage = 10f;
     public float attackCooldown = 1f;
     private float nextAttackTime = 0f;
-    public Animator animator;
+    
+    [Header("Animation")]
+    public EnemyAnimator enemyAnimator;  // Ссылка на скрипт анимаций
     
     [Header("Effects")]
     public GameObject deathEffect;
@@ -33,7 +35,7 @@ public class Enemy : MonoBehaviour
     
     [Header("Loot")]
     public GameObject lootItem;
-    public int experienceReward = 10; // Можно использовать или удалить
+    public int experienceReward = 10;
     
     [Header("States")]
     public float detectionRange = 10f;
@@ -63,6 +65,19 @@ public class Enemy : MonoBehaviour
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
             audioSource = gameObject.AddComponent<AudioSource>();
+        
+        // Находим аниматор врага, если не назначен
+        if (enemyAnimator == null)
+            enemyAnimator = GetComponentInChildren<EnemyAnimator>();
+        
+        if (enemyAnimator != null)
+        {
+            Debug.Log("EnemyAnimator найден и подключен");
+        }
+        else
+        {
+            Debug.LogWarning("EnemyAnimator не найден на дочернем объекте!");
+        }
     }
     
     void Update()
@@ -105,8 +120,6 @@ public class Enemy : MonoBehaviour
                 }
                 break;
         }
-        
-        UpdateAnimations();
     }
     
     void ChasePlayer()
@@ -130,12 +143,22 @@ public class Enemy : MonoBehaviour
         {
             nextAttackTime = Time.time + attackCooldown;
             
-            if (animator != null)
-                animator.SetTrigger("Attack");
-                
+            // АНИМАЦИЯ АТАКИ
+            if (enemyAnimator != null)
+            {
+                enemyAnimator.TriggerAttack();
+                Debug.Log("TriggerAttack вызван!");
+            }
+            else
+            {
+                Debug.LogWarning("enemyAnimator == null, анимация атаки не будет проиграна");
+            }
+            
+            // Звук атаки
             if (attackSound != null && audioSource != null)
                 audioSource.PlayOneShot(attackSound);
-                
+            
+            // Нанесение урона игроку
             PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
             if (playerHealth != null)
             {
@@ -151,11 +174,20 @@ public class Enemy : MonoBehaviour
         
         currentHealth -= damage;
         
+        // АНИМАЦИЯ ПОЛУЧЕНИЯ УРОНА
+        if (enemyAnimator != null)
+        {
+            enemyAnimator.TriggerHit();
+            Debug.Log("TriggerHit вызван!");
+        }
+        
+        // Эффект попадания
         if (hitEffect != null && hitPoint.HasValue)
         {
             Instantiate(hitEffect, hitPoint.Value, Quaternion.identity);
         }
         
+        // Звук получения урона
         if (hurtSound != null && audioSource != null)
             audioSource.PlayOneShot(hurtSound);
         
@@ -178,40 +210,61 @@ public class Enemy : MonoBehaviour
         
         Debug.Log("Враг уничтожен!");
         
+        // АНИМАЦИЯ СМЕРТИ
+        if (enemyAnimator != null)
+        {
+            enemyAnimator.TriggerDeath();
+            Debug.Log("TriggerDeath вызван!");
+        }
+        
+        // Эффект смерти
         if (deathEffect != null)
             Instantiate(deathEffect, transform.position, Quaternion.identity);
-            
+        
+        // Звук смерти
         if (deathSound != null && audioSource != null)
             audioSource.PlayOneShot(deathSound);
-            
+        
+        // Выпадение лута
         if (lootItem != null)
             Instantiate(lootItem, transform.position, Quaternion.identity);
         
-        // Закомментировано, так как PlayerExperience может отсутствовать
-        /*
-        PlayerExperience playerExp = player?.GetComponent<PlayerExperience>();
-        if (playerExp != null)
-            playerExp.AddExperience(experienceReward);
-        */
-        
-        if (animator != null)
-            animator.SetTrigger("Die");
-            
+        // Отключаем коллайдер
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = false;
         
+        // Отключаем NavMeshAgent
         if (agent != null) agent.isStopped = true;
         
+        // Уничтожаем врага через 2 секунды (чтобы анимация смерти успела проиграться)
         Destroy(gameObject, 2f);
     }
     
-    void UpdateAnimations()
+    // Метод для анимационного события (можно вызвать из анимации атаки)
+    public void OnAttackHit()
     {
-        if (animator == null) return;
+        if (player == null) return;
         
-        float speed = agent != null ? agent.velocity.magnitude : 0;
-        animator.SetFloat("Speed", speed);
-        animator.SetBool("IsAttacking", currentState == EnemyState.Attacking);
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+        if (distanceToPlayer <= attackRange)
+        {
+            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+            if (playerHealth != null)
+            {
+                playerHealth.TakeDamage(attackDamage);
+                Debug.Log($"Удар из Animation Event! Урон: {attackDamage}");
+            }
+        }
+    }
+    
+    public float GetCurrentHealth()
+    {
+        return currentHealth;
+    }
+    
+    public float GetHealthPercentage()
+    {
+        return currentHealth / maxHealth;
     }
     
     void OnDrawGizmosSelected()

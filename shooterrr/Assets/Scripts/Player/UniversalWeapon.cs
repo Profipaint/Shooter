@@ -4,9 +4,9 @@ using UnityEngine;
 
 public enum WeaponType
 {
-    Crossbow,     // Арбалет (дальнобойное)
-    Thrown,       // Метательное (ножи, топоры, сюрикены)
-    Melee         // Ближнее (меч, топор, копье)
+    Crossbow,
+    Thrown,
+    Melee
 }
 
 public class MedievalWeapon : MonoBehaviour
@@ -16,92 +16,110 @@ public class MedievalWeapon : MonoBehaviour
     
     [Header("Damage Settings")]
     public float damage = 35f;
-    public float crossbowRange = 80f;      // Дальность арбалета
-    public float thrownRange = 30f;        // Дальность метательного
-    public float meleeRange = 2.5f;        // Дальность ближнего боя
+    public float meleeDamage = 50f;
+    
+    [Header("Range Settings")]
+    public float crossbowRange = 80f;
+    public float thrownRange = 30f;
+    public float meleeRange = 2.5f;
     
     [Header("Fire Rate / Attack Speed")]
-    public float crossbowReloadTime = 1.5f;  // Время перезарядки арбалета
-    public float thrownCooldown = 0.8f;      // Задержка между метаниями
-    public float meleeAttackSpeed = 0.6f;    // Скорость ближней атаки
+    public float crossbowReloadTime = 1.5f;
+    public float thrownCooldown = 0.8f;
+    public float meleeAttackSpeed = 0.6f;
     private float nextAttackTime = 0f;
     
-    [Header("Crossbow Settings (Арбалет)")]
-    public GameObject boltPrefab;            // Префаб болта (снаряда)
-    public Transform shootPoint;             // Точка вылета болта
-    public GameObject crossbowMuzzleFlash;   // Эффект вспышки/дыма при выстреле
-    public float boltSpeed = 50f;            // Скорость полета болта
-    public float crossbowRecoil = 1f;        // Отдача камеры
-    public int boltsPerShot = 1;             // Сколько болтов за раз (для дробового арбалета)
-    public float spreadAngle = 2f;           // Разброс (не точность)
+    [Header("Crossbow Settings")]
+    public GameObject boltPrefab;
+    public Transform shootPoint;
+    public GameObject crossbowMuzzleFlash;
+    public float boltSpeed = 50f;
+    public float crossbowRecoil = 1f;
+    public int boltsPerShot = 1;
+    public float spreadAngle = 2f;
     
-    [Header("Thrown Weapons (Метательное)")]
-    public GameObject thrownPrefab;           // Префаб метательного ножа/топора
-    public int thrownCount = 5;              // Количество метательного оружия
-    private int currentThrown;               // Текущее количество
-    public float thrownArcHeight = 2f;       // Высота дуги полета
-    public GameObject thrownEffect;          // Эффект при метании
+    [Header("Aiming Settings (Прицеливание)")]
+    public float aimingSpeedMultiplier = 0.5f;  // Множитель скорости при прицеливании
+    public bool enableAimingShake = true;       // Включить тряску при прицеливании
+    public float aimingShakeAmount = 0.02f;     // Сила тряски при прицеливании
+    public float aimingShakeSpeed = 8f;         // Скорость тряски при прицеливании
+    private float aimingShakeTimer = 0f;
+    private Vector3 originalCameraPos;
     
-    [Header("Melee Settings (Ближнее)")]
-    public GameObject slashEffect;            // Эффект взмаха
-    public float cameraShakeAmount = 0.08f;   // Тряска камеры при ударе
+    [Header("Thrown Weapons")]
+    public GameObject thrownPrefab;
+    public int thrownCount = 5;
+    private int currentThrown;
+    public float thrownArcHeight = 2f;
+    public GameObject thrownEffect;
+    
+    [Header("Melee Settings")]
+    public GameObject slashEffect;
+    public float cameraShakeAmount = 0.08f;
     public float cameraShakeDuration = 0.1f;
     public LayerMask meleeLayers;
-    public bool heavyWeapon = false;          // Тяжелое оружие (замедляет игрока?)
+    public bool heavyWeapon = false;
     
     [Header("Effects")]
-    public GameObject hitEffect;              // Эффект попадания (кровь, искры)
-    public GameObject impactEffect;           // Эффект попадания в стену
-    public AudioClip shootSound;              // Звук выстрела арбалета
-    public AudioClip thrownSound;             // Звук метания
-    public AudioClip meleeSound;              // Звук удара
-    public AudioClip hitSound;                // Звук попадания
-    public AudioClip reloadSound;             // Звук перезарядки арбалета
+    public GameObject hitEffect;
+    public GameObject impactEffect;
+    public AudioClip shootSound;
+    public AudioClip thrownSound;
+    public AudioClip meleeSound;
+    public AudioClip hitSound;
+    public AudioClip reloadSound;
     
-    [Header("Ammo System (Только для арбалета)")]
+    [Header("Ammo System")]
     public bool useAmmo = true;
-    public int maxBolts = 1;                  // У арбалета обычно 1 болт
+    public int maxBolts = 1;
     public int currentBolts;
-    public int reserveBolts = 30;             // Запас болтов
-    public float reloadDuration = 1.5f;       // Длительность перезарядки
+    public int reserveBolts = 30;
+    public float reloadDuration = 1.5f;
+    private bool isReloading = false;
     
     [Header("UI")]
-    public UnityEngine.UI.Text ammoText;      // Текст с боеприпасами
+    public UnityEngine.UI.Text ammoText;
     public UnityEngine.UI.Slider ammoSlider;
-    public UnityEngine.UI.Text thrownText;    // Текст для метательного оружия
+    public UnityEngine.UI.Text thrownText;
     
     [Header("Camera")]
     public Camera playerCamera;
     
     [Header("Animation")]
     public Animator animator;
-    public string attackTrigger = "Attack";
-    public string reloadTrigger = "Reload";
-    public string thrownTrigger = "Throw";
     
     [Header("Crosshair")]
-    public GameObject crossbowCrosshair;      // Прицел арбалета
-    public GameObject thrownCrosshair;        // Прицел метательного
-    public GameObject meleeCrosshair;         // Прицел ближнего боя
+    public GameObject crossbowCrosshair;
+    public GameObject thrownCrosshair;
+    public GameObject meleeCrosshair;
     
-    private bool isReloading = false;
     private bool isAiming = false;
+    private FirstPersonMovement playerMovement;
+    private float originalWalkSpeed;
     
     void Start()
     {
         if (playerCamera == null)
             playerCamera = Camera.main;
-            
-        // Инициализация боеприпасов
-        if (useAmmo && weaponType == WeaponType.Crossbow)
+        
+        // Сохраняем оригинальную позицию камеры
+        if (playerCamera != null)
         {
-            currentBolts = maxBolts;
+            originalCameraPos = playerCamera.transform.localPosition;
         }
         
-        if (weaponType == WeaponType.Thrown)
+        playerMovement = GetComponent<FirstPersonMovement>();
+        
+        if (playerMovement != null)
         {
-            currentThrown = thrownCount;
+            originalWalkSpeed = playerMovement.walkSpeed;
         }
+        
+        if (useAmmo && weaponType == WeaponType.Crossbow)
+            currentBolts = maxBolts;
+        
+        if (weaponType == WeaponType.Thrown)
+            currentThrown = thrownCount;
         
         UpdateUI();
         UpdateCrosshair();
@@ -109,132 +127,218 @@ public class MedievalWeapon : MonoBehaviour
     
     void Update()
     {
-        // Переключение оружия
+        UpdateMovementAnimations();
+        
         if (Input.GetKeyDown(KeyCode.Alpha1))
             SwitchWeapon(WeaponType.Crossbow);
         else if (Input.GetKeyDown(KeyCode.Alpha2))
             SwitchWeapon(WeaponType.Melee);
         else if (Input.GetKeyDown(KeyCode.Alpha3))
             SwitchWeapon(WeaponType.Thrown);
-            
-        // Прицеливание для арбалета (правый клик)
+        
         if (weaponType == WeaponType.Crossbow)
         {
-            HandleAiming();
+            bool isRightMousePressed = Input.GetMouseButton(1);
+            if (isRightMousePressed != isAiming)
+            {
+                isAiming = isRightMousePressed;
+                
+                if (animator != null)
+                    animator.SetBool("IsAiming", isAiming);
+                
+                if (playerMovement != null)
+                {
+                    if (isAiming)
+                    {
+                        playerMovement.walkSpeed = originalWalkSpeed * aimingSpeedMultiplier;
+                        aimingShakeTimer = 0f;
+                    }
+                    else
+                    {
+                        playerMovement.walkSpeed = originalWalkSpeed;
+                        if (playerCamera != null && enableAimingShake)
+                        {
+                            playerCamera.transform.localPosition = originalCameraPos;
+                        }
+                    }
+                }
+                
+                UpdateCrosshair();
+            }
+            
+            // ТРЯСКА ПРИ ПРИЦЕЛИВАНИИ
+            if (isAiming && enableAimingShake && playerCamera != null)
+            {
+                HandleAimingShake();
+            }
+            
+            if (Input.GetMouseButtonDown(0) && Time.time >= nextAttackTime && !isReloading && currentBolts > 0)
+            {
+                ShootCrossbow();
+            }
+            
+            if (Input.GetKeyDown(KeyCode.R) && useAmmo && !isReloading && currentBolts < maxBolts && reserveBolts > 0)
+            {
+                StartCoroutine(ReloadCrossbow());
+            }
+            
+            if (Input.GetKeyDown(KeyCode.F) && Time.time >= nextAttackTime)
+            {
+                MeleeAttack();
+            }
         }
-        
-        // Атака
-        switch (weaponType)
+        else if (weaponType == WeaponType.Thrown)
         {
-            case WeaponType.Crossbow:
-                if (Input.GetButtonDown("Fire1") && Time.time >= nextAttackTime && !isReloading)
-                    ShootCrossbow();
-                if (Input.GetKeyDown(KeyCode.R) && useAmmo && !isReloading)
-                    StartCoroutine(ReloadCrossbow());
-                break;
-                
-            case WeaponType.Thrown:
-                if (Input.GetButtonDown("Fire1") && Time.time >= nextAttackTime && currentThrown > 0)
-                    ThrowWeapon();
-                break;
-                
-            case WeaponType.Melee:
-                if (Input.GetButtonDown("Fire1") && Time.time >= nextAttackTime)
-                    MeleeAttack();
-                break;
+            if (Input.GetMouseButtonDown(0) && Time.time >= nextAttackTime && currentThrown > 0)
+            {
+                ThrowWeapon();
+            }
+            
+            if (Input.GetKeyDown(KeyCode.F) && Time.time >= nextAttackTime)
+            {
+                MeleeAttack();
+            }
+        }
+        else if (weaponType == WeaponType.Melee)
+        {
+            if (Input.GetMouseButtonDown(0) && Time.time >= nextAttackTime)
+            {
+                MeleeAttack();
+            }
         }
         
         UpdateUI();
     }
     
-    void HandleAiming()
+    void HandleAimingShake()
     {
-        if (Input.GetMouseButton(1))
+        // Плавная тряска камеры (эффект дыхания)
+        aimingShakeTimer += Time.deltaTime * aimingShakeSpeed;
+        
+        float shakeX = Mathf.Sin(aimingShakeTimer) * aimingShakeAmount;
+        float shakeY = Mathf.Cos(aimingShakeTimer * 1.3f) * aimingShakeAmount;
+        
+        Vector3 newPos = originalCameraPos;
+        newPos.x += shakeX;
+        newPos.y += shakeY;
+        
+        playerCamera.transform.localPosition = Vector3.Lerp(
+            playerCamera.transform.localPosition, 
+            newPos, 
+            Time.deltaTime * 10f
+        );
+    }
+    
+    void UpdateMovementAnimations()
+    {
+        if (animator == null) return;
+        
+        float horizontal = Input.GetAxisRaw("Horizontal");
+        float vertical = Input.GetAxisRaw("Vertical");
+        bool isMoving = Mathf.Abs(horizontal) > 0.05f || Mathf.Abs(vertical) > 0.05f;
+        
+        if (weaponType == WeaponType.Crossbow)
         {
-            isAiming = true;
-            // Уменьшаем разброс при прицеливании
-            spreadAngle = 0.5f;
-            
-            // Приближение камеры (опционально)
-            if (playerCamera != null && playerCamera.fieldOfView > 40)
+            if (isMoving && isAiming)
             {
-                playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, 45, Time.deltaTime * 10f);
+                animator.SetFloat("MovementSpeed", 1f);
+                animator.SetBool("IsWalking", true);
+                animator.SetBool("IsAimingWalk", true);
+            }
+            else if (isMoving && !isAiming)
+            {
+                animator.SetFloat("MovementSpeed", 1f);
+                animator.SetBool("IsWalking", true);
+                animator.SetBool("IsAimingWalk", false);
+            }
+            else
+            {
+                animator.SetFloat("MovementSpeed", 0f);
+                animator.SetBool("IsWalking", false);
+                animator.SetBool("IsAimingWalk", false);
             }
         }
         else
         {
-            isAiming = false;
-            spreadAngle = 2f;
-            
-            // Возврат камеры
-            if (playerCamera != null && playerCamera.fieldOfView < 60)
+            if (isMoving)
             {
-                playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, 60, Time.deltaTime * 10f);
+                animator.SetFloat("MovementSpeed", 1f);
+                animator.SetBool("IsWalking", true);
+            }
+            else
+            {
+                animator.SetFloat("MovementSpeed", 0f);
+                animator.SetBool("IsWalking", false);
             }
         }
     }
     
     void ShootCrossbow()
     {
-        // Проверка болтов
-        if (useAmmo && currentBolts <= 0)
-        {
-            Debug.Log("Нет болтов! Нажми R для перезарядки");
-            return;
-        }
-        
         nextAttackTime = Time.time + crossbowReloadTime;
         
         if (useAmmo)
             currentBolts--;
-            
-        // Эффекты выстрела
+        
         if (crossbowMuzzleFlash != null)
             StartCoroutine(ShowMuzzleFlash());
-            
+        
         if (shootSound != null)
             PlaySound(shootSound);
-            
+        
         ApplyRecoil();
         
-        // Выстрел несколькими болтами
+        if (animator != null)
+            animator.SetTrigger("CrossbowShoot");
+        
         for (int i = 0; i < boltsPerShot; i++)
         {
             Vector3 direction = GetSpreadDirection();
             
             if (boltPrefab != null && shootPoint != null)
             {
-                // Физический снаряд
                 GameObject bolt = Instantiate(boltPrefab, shootPoint.position, Quaternion.LookRotation(direction));
                 Rigidbody rb = bolt.GetComponent<Rigidbody>();
-                
                 if (rb != null)
-                {
                     rb.velocity = direction * boltSpeed;
-                }
-                
-                Destroy(bolt, 5f); // Автоудаление через 5 сек
+                Destroy(bolt, 5f);
             }
             else
             {
-                // Raycast версия (проще)
                 RaycastHit hit;
                 if (Physics.Raycast(playerCamera.transform.position, direction, out hit, crossbowRange))
                 {
-                    HandleHit(hit.transform, hit.point, hit.normal);
+                    HandleRangedHit(hit.transform, hit.point, hit.normal);
                 }
             }
         }
         
-        // Анимация выстрела
+        Debug.Log($"Выстрел! Урон: {damage}, Болтов: {currentBolts}/{maxBolts}");
+    }
+    
+    IEnumerator ReloadCrossbow()
+    {
+        isReloading = true;
+        
         if (animator != null)
-            animator.SetTrigger(attackTrigger);
-            
-        // Автоматическая перезарядка если болтов больше нет
-        if (useAmmo && currentBolts == 0 && reserveBolts > 0)
-        {
-            StartCoroutine(ReloadCrossbow());
-        }
+            animator.SetTrigger("Reload");
+        
+        if (reloadSound != null)
+            PlaySound(reloadSound);
+        
+        Debug.Log("Перезарядка...");
+        
+        yield return new WaitForSeconds(reloadDuration);
+        
+        int neededBolts = maxBolts - currentBolts;
+        int boltsToReload = Mathf.Min(neededBolts, reserveBolts);
+        
+        currentBolts += boltsToReload;
+        reserveBolts -= boltsToReload;
+        
+        Debug.Log($"Перезарядка завершена: {currentBolts}/{maxBolts}, в запасе: {reserveBolts}");
+        
+        isReloading = false;
     }
     
     void ThrowWeapon()
@@ -242,14 +346,15 @@ public class MedievalWeapon : MonoBehaviour
         nextAttackTime = Time.time + thrownCooldown;
         currentThrown--;
         
-        // Эффект метания
         if (thrownEffect != null)
-            Instantiate(thrownEffect, shootPoint.position, Quaternion.identity);
-            
+            Instantiate(thrownEffect, shootPoint != null ? shootPoint.position : transform.position, Quaternion.identity);
+        
         if (thrownSound != null)
             PlaySound(thrownSound);
-            
-        // Создание метательного снаряда
+        
+        if (animator != null)
+            animator.SetTrigger("Throw");
+        
         if (thrownPrefab != null && shootPoint != null)
         {
             GameObject thrown = Instantiate(thrownPrefab, shootPoint.position, Quaternion.identity);
@@ -263,121 +368,114 @@ public class MedievalWeapon : MonoBehaviour
             }
         }
         
-        // Анимация
-        if (animator != null)
-            animator.SetTrigger(thrownTrigger);
-            
-        // Анимация руки
-        StartCoroutine(ThrowAnimation());
+        Debug.Log($"Метание! Урон: {damage}, Осталось: {currentThrown}");
     }
     
     void MeleeAttack()
     {
-        nextAttackTime = Time.time + meleeAttackSpeed;
+        float attackCooldown = (weaponType == WeaponType.Crossbow) ? crossbowReloadTime : 
+                               (weaponType == WeaponType.Melee) ? meleeAttackSpeed : thrownCooldown;
         
-        // Эффекты
+        nextAttackTime = Time.time + attackCooldown;
+        
         if (slashEffect != null)
             StartCoroutine(ShowSlashEffect());
-            
+        
         if (meleeSound != null)
             PlaySound(meleeSound);
-            
+        
         StartCoroutine(CameraShake());
         
-        // Анимация
         if (animator != null)
-            animator.SetTrigger(attackTrigger);
-            
-        // Попадание (луч)
+            animator.SetTrigger("MeleeAttack");
+        
         RaycastHit hit;
         if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out hit, meleeRange, meleeLayers))
         {
-            HandleHit(hit.transform, hit.point, hit.normal);
+            Debug.Log($"Ближняя атака попала в: {hit.transform.name}");
+            
+            if (hitEffect != null)
+            {
+                GameObject effect = Instantiate(hitEffect, hit.point, Quaternion.LookRotation(hit.normal));
+                Destroy(effect, 2f);
+            }
             
             if (hitSound != null)
                 PlaySound(hitSound);
+            
+            HandleMeleeHit(hit.transform, hit.point, hit.normal);
         }
         
-        // Дополнительная проверка сферой для Area of Effect
         Collider[] hitColliders = Physics.OverlapSphere(transform.position, meleeRange, meleeLayers);
         foreach (var collider in hitColliders)
         {
             if (collider.transform != transform && collider.transform != transform.root)
             {
-                HandleHit(collider.transform, collider.transform.position, Vector3.up);
+                Debug.Log($"Ближняя атака (сфера) попала в: {collider.name}");
+                HandleMeleeHit(collider.transform, collider.transform.position, Vector3.up);
             }
         }
         
-        // Замедление игрока для тяжелого оружия
         if (heavyWeapon)
-        {
             StartCoroutine(SlowMovement());
-        }
     }
     
-    void HandleHit(Transform target, Vector3 hitPoint, Vector3 normal)
+    void HandleRangedHit(Transform target, Vector3 hitPoint, Vector3 normal)
     {
-        // Эффект попадания
-        if (hitEffect != null)
-        {
-            GameObject effect = Instantiate(hitEffect, hitPoint, Quaternion.LookRotation(normal));
-            Destroy(effect, 2f);
-        }
-        
-        // Нанесение урона
         Enemy enemy = target.GetComponent<Enemy>();
         if (enemy != null)
         {
             enemy.TakeDamage(damage, hitPoint);
-            Debug.Log($"Попадание! Урон: {damage}");
+            return;
         }
-        else if (target.GetComponent<DestructibleObject>() != null)
+        
+        DestructibleObject destructible = target.GetComponent<DestructibleObject>();
+        if (destructible != null)
         {
-            target.GetComponent<DestructibleObject>().TakeDamage(damage);
+            destructible.TakeDamage(damage);
+            return;
         }
-        else
+        
+        if (impactEffect != null)
         {
-            // Эффект попадания в стену
-            if (impactEffect != null)
-            {
-                GameObject impact = Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
-                Destroy(impact, 1f);
-            }
+            GameObject impact = Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
+            Destroy(impact, 1f);
         }
     }
     
-    IEnumerator ReloadCrossbow()
+    void HandleMeleeHit(Transform target, Vector3 hitPoint, Vector3 normal)
     {
-        isReloading = true;
+        Enemy enemy = target.GetComponent<Enemy>();
+        if (enemy != null)
+        {
+            enemy.TakeDamage(meleeDamage, hitPoint);
+            return;
+        }
         
-        if (reloadSound != null)
-            PlaySound(reloadSound);
-            
-        if (animator != null)
-            animator.SetTrigger(reloadTrigger);
-            
-        yield return new WaitForSeconds(reloadDuration);
+        DestructibleObject destructible = target.GetComponent<DestructibleObject>();
+        if (destructible != null)
+        {
+            destructible.TakeDamage(meleeDamage);
+            return;
+        }
         
-        // Перезарядка
-        int neededBolts = maxBolts - currentBolts;
-        int boltsToReload = Mathf.Min(neededBolts, reserveBolts);
-        
-        currentBolts += boltsToReload;
-        reserveBolts -= boltsToReload;
-        
-        Debug.Log($"Перезарядка: {currentBolts}/{maxBolts}, болтов в запасе: {reserveBolts}");
-        
-        isReloading = false;
+        if (impactEffect != null)
+        {
+            GameObject impact = Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
+            Destroy(impact, 1f);
+        }
     }
     
     Vector3 GetSpreadDirection()
     {
         Vector3 direction = playerCamera.transform.forward;
         
-        if (spreadAngle > 0 && !isAiming)
+        float currentSpread = isAiming ? spreadAngle * 0.5f : spreadAngle;
+        
+        if (currentSpread > 0)
         {
-            float x = Random.Range(-spreadAngle, spreadAngle);
-            float y = Random.Range(-spreadAngle, spreadAngle);
+            float x = Random.Range(-currentSpread, currentSpread);
+            float y = Random.Range(-currentSpread, currentSpread);
             direction = Quaternion.Euler(x, y, 0) * direction;
         }
         
@@ -397,7 +495,6 @@ public class MedievalWeapon : MonoBehaviour
     public void AddBolts(int amount)
     {
         reserveBolts += amount;
-        Debug.Log($"Найдено {amount} болтов. Всего: {reserveBolts}");
         UpdateUI();
     }
     
@@ -413,34 +510,50 @@ public class MedievalWeapon : MonoBehaviour
         if (weaponType == newType) return;
         
         weaponType = newType;
-        string weaponName = "";
+        isReloading = false;
         
-        switch (weaponType)
+        if (isAiming)
         {
-            case WeaponType.Crossbow:
-                weaponName = "Арбалет";
-                break;
-            case WeaponType.Thrown:
-                weaponName = "Метательное оружие";
-                break;
-            case WeaponType.Melee:
-                weaponName = "Ближнее оружие";
-                break;
+            isAiming = false;
+            if (playerMovement != null)
+                playerMovement.walkSpeed = originalWalkSpeed;
+            if (animator != null)
+                animator.SetBool("IsAiming", false);
+            if (playerCamera != null && enableAimingShake)
+            {
+                playerCamera.transform.localPosition = originalCameraPos;
+            }
         }
         
-        Debug.Log($"Переключено на: {weaponName}");
+        nextAttackTime = 0;
+        
+        if (animator != null)
+        {
+            animator.SetBool("IsWalking", false);
+            animator.SetBool("IsAimingWalk", false);
+            animator.SetFloat("MovementSpeed", 0f);
+        }
+        
         UpdateCrosshair();
         UpdateUI();
     }
     
     void UpdateCrosshair()
     {
-        if (crossbowCrosshair != null)
-            crossbowCrosshair.SetActive(weaponType == WeaponType.Crossbow);
-            
+        if (weaponType == WeaponType.Crossbow)
+        {
+            if (crossbowCrosshair != null)
+                crossbowCrosshair.SetActive(!isAiming);
+        }
+        else
+        {
+            if (crossbowCrosshair != null)
+                crossbowCrosshair.SetActive(false);
+        }
+        
         if (thrownCrosshair != null)
             thrownCrosshair.SetActive(weaponType == WeaponType.Thrown);
-            
+        
         if (meleeCrosshair != null)
             meleeCrosshair.SetActive(weaponType == WeaponType.Melee);
     }
@@ -469,28 +582,27 @@ public class MedievalWeapon : MonoBehaviour
         AudioSource audio = GetComponent<AudioSource>();
         if (audio == null)
             audio = gameObject.AddComponent<AudioSource>();
-            
         audio.PlayOneShot(clip);
     }
     
     IEnumerator ShowMuzzleFlash()
     {
-        crossbowMuzzleFlash.SetActive(true);
-        yield return new WaitForSeconds(0.1f);
-        crossbowMuzzleFlash.SetActive(false);
+        if (crossbowMuzzleFlash != null)
+        {
+            crossbowMuzzleFlash.SetActive(true);
+            yield return new WaitForSeconds(0.1f);
+            crossbowMuzzleFlash.SetActive(false);
+        }
     }
     
     IEnumerator ShowSlashEffect()
     {
-        slashEffect.SetActive(true);
-        yield return new WaitForSeconds(0.2f);
-        slashEffect.SetActive(false);
-    }
-    
-    IEnumerator ThrowAnimation()
-    {
-        // Анимация руки (можно через аниматор)
-        yield return new WaitForSeconds(0.3f);
+        if (slashEffect != null)
+        {
+            slashEffect.SetActive(true);
+            yield return new WaitForSeconds(0.2f);
+            slashEffect.SetActive(false);
+        }
     }
     
     IEnumerator CameraShake()
@@ -514,13 +626,12 @@ public class MedievalWeapon : MonoBehaviour
     
     IEnumerator SlowMovement()
     {
-        FirstPersonMovement movement = GetComponent<FirstPersonMovement>();
-        if (movement != null)
+        if (playerMovement != null)
         {
-            float originalSpeed = movement.walkSpeed;
-            movement.walkSpeed *= 0.5f;
+            float originalSpeed = playerMovement.walkSpeed;
+            playerMovement.walkSpeed *= 0.5f;
             yield return new WaitForSeconds(0.5f);
-            movement.walkSpeed = originalSpeed;
+            playerMovement.walkSpeed = originalSpeed;
         }
     }
 }
