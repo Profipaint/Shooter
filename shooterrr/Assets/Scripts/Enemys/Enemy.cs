@@ -1,7 +1,6 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
+using System.Collections;
 
 public class Enemy : MonoBehaviour
 {
@@ -20,26 +19,35 @@ public class Enemy : MonoBehaviour
     [Header("Attack")]
     public float attackDamage = 10f;
     public float attackCooldown = 1f;
+    public float attackDelay = 0.4f;
+    public float attackDuration = 0.8f;
+    public float missChance = 0.2f;
     private float nextAttackTime = 0f;
+    private bool isAttacking = false;
     
     [Header("Animation")]
-    public EnemyAnimator enemyAnimator;  // Ссылка на скрипт анимаций
+    public EnemyAnimator enemyAnimator;
     
     [Header("Effects")]
     public GameObject deathEffect;
     public GameObject hitEffect;
+    public GameObject missEffect;
     public AudioClip deathSound;
     public AudioClip attackSound;
     public AudioClip hurtSound;
+    public AudioClip missSound;
     private AudioSource audioSource;
     
     [Header("Loot")]
-    public GameObject lootItem;
-    public int experienceReward = 10;
+    public GameObject lootPrefab;
+    public int lootAmount = 5;
+    public float lootDropChance = 1f;
     
     [Header("States")]
     public float detectionRange = 10f;
+    public bool enableDebugLogs = true;
     private bool isDead = false;
+    private bool isTakingHit = false;
     private EnemyState currentState = EnemyState.Idle;
     
     private enum EnemyState
@@ -62,27 +70,22 @@ public class Enemy : MonoBehaviour
             agent.stoppingDistance = stoppingDistance;
         }
         
+        if (enemyAnimator == null)
+            enemyAnimator = GetComponentInChildren<EnemyAnimator>();
+        
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
             audioSource = gameObject.AddComponent<AudioSource>();
         
-        // Находим аниматор врага, если не назначен
-        if (enemyAnimator == null)
-            enemyAnimator = GetComponentInChildren<EnemyAnimator>();
-        
-        if (enemyAnimator != null)
-        {
-            Debug.Log("EnemyAnimator найден и подключен");
-        }
-        else
-        {
-            Debug.LogWarning("EnemyAnimator не найден на дочернем объекте!");
-        }
+        if (enableDebugLogs)
+            Debug.Log($"Враг {name} появился!");
     }
     
     void Update()
     {
         if (isDead || player == null) return;
+        
+        if (isTakingHit) return;
         
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
         
@@ -90,18 +93,23 @@ public class Enemy : MonoBehaviour
         {
             case EnemyState.Idle:
                 if (distanceToPlayer <= detectionRange)
+                {
                     currentState = EnemyState.Chasing;
+                    if (enableDebugLogs) Debug.Log($"Враг {name}: перешел в режим ПРЕСЛЕДОВАНИЯ");
+                }
                 break;
                 
             case EnemyState.Chasing:
-                if (distanceToPlayer <= attackRange)
+                if (distanceToPlayer <= attackRange && !isAttacking)
                 {
                     currentState = EnemyState.Attacking;
+                    if (enableDebugLogs) Debug.Log($"Враг {name}: перешел в режим АТАКИ");
                 }
                 else if (distanceToPlayer > chaseRange)
                 {
                     currentState = EnemyState.Idle;
                     if (agent != null) agent.isStopped = true;
+                    if (enableDebugLogs) Debug.Log($"Враг {name}: перешел в режим ОЖИДАНИЯ");
                 }
                 else
                 {
@@ -110,9 +118,10 @@ public class Enemy : MonoBehaviour
                 break;
                 
             case EnemyState.Attacking:
-                if (distanceToPlayer > attackRange)
+                if (distanceToPlayer > attackRange && !isAttacking)
                 {
                     currentState = EnemyState.Chasing;
+                    if (enableDebugLogs) Debug.Log($"Враг {name}: игрок убежал, снова ПРЕСЛЕДУЮ");
                 }
                 else
                 {
@@ -124,6 +133,12 @@ public class Enemy : MonoBehaviour
     
     void ChasePlayer()
     {
+        if (isAttacking || isTakingHit) 
+        {
+            if (agent != null) agent.isStopped = true;
+            return;
+        }
+        
         if (agent != null && agent.isActiveAndEnabled)
         {
             agent.isStopped = false;
@@ -139,59 +154,119 @@ public class Enemy : MonoBehaviour
     
     void AttackPlayer()
     {
-        if (Time.time >= nextAttackTime)
+        if (Time.time >= nextAttackTime && !isAttacking && !isTakingHit)
         {
             nextAttackTime = Time.time + attackCooldown;
+            isAttacking = true;
             
-            // АНИМАЦИЯ АТАКИ
+            if (agent != null)
+                agent.isStopped = true;
+            
             if (enemyAnimator != null)
-            {
                 enemyAnimator.TriggerAttack();
-                Debug.Log("TriggerAttack вызван!");
-            }
-            else
-            {
-                Debug.LogWarning("enemyAnimator == null, анимация атаки не будет проиграна");
-            }
             
-            // Звук атаки
             if (attackSound != null && audioSource != null)
                 audioSource.PlayOneShot(attackSound);
             
-            // Нанесение урона игроку
+            bool isMiss = Random.value < missChance;
+            
+            if (isMiss)
+            {
+                if (enableDebugLogs) Debug.Log($"Враг {name}: ПРОМАХ!");
+                
+                if (missSound != null && audioSource != null)
+                    audioSource.PlayOneShot(missSound);
+                
+                if (missEffect != null && player != null)
+                {
+                    Vector3 missPosition = player.position + Random.insideUnitSphere * 1f;
+                    Instantiate(missEffect, missPosition, Quaternion.identity);
+                }
+                
+                StartCoroutine(EndAttackAfterDelay(attackDuration));
+            }
+            else
+            {
+                if (enableDebugLogs) Debug.Log($"Враг {name}: АТАКУЮ!");
+                
+                Invoke(nameof(DelayedDamage), attackDelay);
+                StartCoroutine(EndAttackAfterDelay(attackDuration));
+            }
+        }
+    }
+    
+    void DelayedDamage()
+    {
+        if (player == null) return;
+        
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+        
+        if (distanceToPlayer <= attackRange)
+        {
             PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
             if (playerHealth != null)
             {
                 playerHealth.TakeDamage(attackDamage);
-                Debug.Log($"Враг атаковал! Урон: {attackDamage}");
+                if (enableDebugLogs) Debug.Log($"Враг {name}: НАНЕСЕН УРОН {attackDamage}!");
             }
+        }
+        else
+        {
+            if (enableDebugLogs) Debug.Log($"Враг {name}: ПРОМАХ! Игрок ушел");
+            
+            if (missEffect != null)
+            {
+                Vector3 groundPos = transform.position + transform.forward * 1.5f;
+                groundPos.y = 0;
+                Instantiate(missEffect, groundPos, Quaternion.identity);
+            }
+        }
+    }
+    
+    IEnumerator EndAttackAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        EndAttack();
+    }
+    
+    void EndAttack()
+    {
+        isAttacking = false;
+        
+        if (agent != null && !isDead && !isTakingHit && currentState == EnemyState.Attacking)
+        {
+            agent.isStopped = false;
+            currentState = EnemyState.Chasing;
         }
     }
     
     public void TakeDamage(float damage, Vector3? hitPoint = null)
     {
         if (isDead) return;
+        if (isTakingHit) return;
         
         currentHealth -= damage;
         
-        // АНИМАЦИЯ ПОЛУЧЕНИЯ УРОНА
-        if (enemyAnimator != null)
+        if (enableDebugLogs) Debug.Log($"Враг {name}: получил урон {damage}. Осталось: {currentHealth}");
+        
+        if (isAttacking)
         {
-            enemyAnimator.TriggerHit();
-            Debug.Log("TriggerHit вызван!");
+            StopAllCoroutines();
+            EndAttack();
         }
         
-        // Эффект попадания
+        StartCoroutine(HitAnimationSequence());
+        
+        if (enemyAnimator != null)
+            enemyAnimator.TriggerHit();
+        
         if (hitEffect != null && hitPoint.HasValue)
         {
             Instantiate(hitEffect, hitPoint.Value, Quaternion.identity);
         }
         
-        // Звук получения урона
         if (hurtSound != null && audioSource != null)
             audioSource.PlayOneShot(hurtSound);
-        
-        Debug.Log($"Враг получил {damage} урона. Осталось здоровья: {currentHealth}");
         
         if (currentHealth <= 0)
         {
@@ -199,7 +274,31 @@ public class Enemy : MonoBehaviour
         }
         else
         {
+            StartCoroutine(ReturnToChaseAfterHit());
+        }
+    }
+    
+    IEnumerator HitAnimationSequence()
+    {
+        isTakingHit = true;
+        
+        if (agent != null)
+            agent.isStopped = true;
+        
+        yield return new WaitForSeconds(0.3f);
+        
+        isTakingHit = false;
+    }
+    
+    IEnumerator ReturnToChaseAfterHit()
+    {
+        yield return new WaitForSeconds(0.3f);
+        
+        if (!isDead && !isAttacking)
+        {
             currentState = EnemyState.Chasing;
+            if (agent != null)
+                agent.isStopped = false;
         }
     }
     
@@ -208,63 +307,46 @@ public class Enemy : MonoBehaviour
         isDead = true;
         currentState = EnemyState.Dead;
         
-        Debug.Log("Враг уничтожен!");
+        if (enableDebugLogs) Debug.Log($"Враг {name}: УМИРАЮ!");
         
-        // АНИМАЦИЯ СМЕРТИ
+        if (agent != null)
+            agent.isStopped = true;
+        
         if (enemyAnimator != null)
-        {
             enemyAnimator.TriggerDeath();
-            Debug.Log("TriggerDeath вызван!");
-        }
         
-        // Эффект смерти
         if (deathEffect != null)
             Instantiate(deathEffect, transform.position, Quaternion.identity);
         
-        // Звук смерти
         if (deathSound != null && audioSource != null)
             audioSource.PlayOneShot(deathSound);
         
-        // Выпадение лута
-        if (lootItem != null)
-            Instantiate(lootItem, transform.position, Quaternion.identity);
+        DropLoot();
         
-        // Отключаем коллайдер
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = false;
         
-        // Отключаем NavMeshAgent
-        if (agent != null) agent.isStopped = true;
+        StartCoroutine(DestroyAfterDeath());
+    }
+    
+    IEnumerator DestroyAfterDeath()
+    {
+        // Ждем 4 секунды перед удалением врага
+        float deathAnimationLength = 4f;
+        yield return new WaitForSeconds(deathAnimationLength);
         
-        // Уничтожаем врага через 2 секунды (чтобы анимация смерти успела проиграться)
-        Destroy(gameObject, 2f);
+        Destroy(gameObject);
     }
     
-    // Метод для анимационного события (можно вызвать из анимации атаки)
-    public void OnAttackHit()
+    void DropLoot()
     {
-        if (player == null) return;
+        if (lootPrefab == null) return;
+        if (Random.value > lootDropChance) return;
         
-        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
-        if (distanceToPlayer <= attackRange)
-        {
-            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
-            if (playerHealth != null)
-            {
-                playerHealth.TakeDamage(attackDamage);
-                Debug.Log($"Удар из Animation Event! Урон: {attackDamage}");
-            }
-        }
-    }
-    
-    public float GetCurrentHealth()
-    {
-        return currentHealth;
-    }
-    
-    public float GetHealthPercentage()
-    {
-        return currentHealth / maxHealth;
+        Vector3 lootPosition = new Vector3(transform.position.x, 0.05f, transform.position.z);
+        Instantiate(lootPrefab, lootPosition, Quaternion.identity);
+        
+        if (enableDebugLogs) Debug.Log($"Выпало {lootAmount} болтов");
     }
     
     void OnDrawGizmosSelected()
