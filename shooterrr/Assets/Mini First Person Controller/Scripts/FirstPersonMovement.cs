@@ -6,11 +6,25 @@ public class FirstPersonMovement : MonoBehaviour
 {
     [Header("Movement")]
     public float walkSpeed = 5;
-
-    [Header("Running (disabled - for compatibility only)")]
-    public bool canRun = false;
-    public bool IsRunning { get; private set; }
     public float runSpeed = 10;
+
+    [Header("Stamina System")]
+    public bool enableStamina = true;
+    public float maxStamina = 100f;
+    public float currentStamina;
+    public float staminaDrainRate = 20f;      // Скорость траты стамины при беге (в секунду)
+    public float staminaRegenRate = 15f;      // Скорость восстановления стамины (в секунду)
+    public float staminaRegenDelay = 1f;      // Задержка перед восстановлением после бега
+    private float staminaRegenTimer = 0f;
+    private bool isRunning = false;
+    
+    [Header("Stamina UI")]
+    public UnityEngine.UI.Slider staminaSlider;
+    public UnityEngine.UI.Text staminaText;
+    
+    [Header("Running (disabled - for compatibility only)")]
+    public bool canRun = true;
+    public bool IsRunning { get; private set; }
     public KeyCode runningKey = KeyCode.LeftShift;
 
     [Header("Animation")]
@@ -60,8 +74,8 @@ public class FirstPersonMovement : MonoBehaviour
     
     [Header("Jump Camera Effect")]
     public bool enableJumpEffect = true;
-    public float jumpDownOffset = 0.08f;      // Опускание камеры при прыжке
-    public float jumpEffectDuration = 0.15f;   // Длительность эффекта
+    public float jumpDownOffset = 0.08f;
+    public float jumpEffectDuration = 0.15f;
     
     private Transform cameraTransform;
     private float defaultCameraY;
@@ -81,6 +95,7 @@ public class FirstPersonMovement : MonoBehaviour
             animator = GetComponent<Animator>();
 
         IsRunning = false;
+        currentStamina = maxStamina;
     }
 
     void Start()
@@ -106,6 +121,8 @@ public class FirstPersonMovement : MonoBehaviour
                 enableCameraBob = false;
             }
         }
+        
+        UpdateStaminaUI();
     }
 
     System.Collections.IEnumerator EnableMovementAfterStart()
@@ -133,7 +150,8 @@ public class FirstPersonMovement : MonoBehaviour
         HandleShoot();
         HandleReload();
         HandleMelee();
-        HandleJumpEffect();  // ЭФФЕКТ ПРЫЖКА
+        HandleJumpEffect();
+        HandleStamina();
         
         bool isMoving = IsPlayerMoving();
         
@@ -158,11 +176,82 @@ public class FirstPersonMovement : MonoBehaviour
         }
     }
 
+    void HandleStamina()
+    {
+        if (!enableStamina) return;
+        
+        bool isShiftPressed = Input.GetKey(runningKey);
+        bool isMoving = IsPlayerMoving();
+        
+        // Проверяем, можно ли бежать
+        bool canRunNow = canRun && isShiftPressed && isMoving && !isAiming && currentStamina > 0;
+        
+        if (canRunNow)
+        {
+            // Тратим стамину
+            currentStamina -= staminaDrainRate * Time.deltaTime;
+            currentStamina = Mathf.Max(0, currentStamina);
+            isRunning = true;
+            IsRunning = true;
+            
+            // Сбрасываем таймер регенерации
+            staminaRegenTimer = staminaRegenDelay;
+        }
+        else
+        {
+            isRunning = false;
+            IsRunning = false;
+            
+            // Восстанавливаем стамину с задержкой
+            if (staminaRegenTimer > 0)
+            {
+                staminaRegenTimer -= Time.deltaTime;
+            }
+            else if (currentStamina < maxStamina)
+            {
+                currentStamina += staminaRegenRate * Time.deltaTime;
+                currentStamina = Mathf.Min(maxStamina, currentStamina);
+            }
+        }
+        
+        UpdateStaminaUI();
+    }
+
+    void UpdateStaminaUI()
+    {
+        if (staminaSlider != null)
+        {
+            staminaSlider.maxValue = maxStamina;
+            staminaSlider.value = currentStamina;
+        }
+        
+        if (staminaText != null)
+        {
+            staminaText.text = $"{Mathf.Round(currentStamina)}%";
+        }
+    }
+
+    public bool HasStamina()
+    {
+        return currentStamina > 0;
+    }
+
+    public float GetStaminaPercentage()
+    {
+        return currentStamina / maxStamina;
+    }
+
+    public void AddStamina(float amount)
+    {
+        currentStamina += amount;
+        currentStamina = Mathf.Min(maxStamina, currentStamina);
+        UpdateStaminaUI();
+    }
+
     void HandleJumpEffect()
     {
         if (!hasStarted) return;
         
-        // При нажатии на пробел
         if (Input.GetKeyDown(KeyCode.Space))
         {
             if (enableJumpEffect && cameraTransform != null)
@@ -179,7 +268,6 @@ public class FirstPersonMovement : MonoBehaviour
         Vector3 downPos = originalPos;
         downPos.y -= jumpDownOffset;
         
-        // Опускаем камеру вниз
         while (elapsed < jumpEffectDuration / 2)
         {
             float t = elapsed / (jumpEffectDuration / 2);
@@ -190,7 +278,6 @@ public class FirstPersonMovement : MonoBehaviour
         
         cameraTransform.localPosition = downPos;
         
-        // Возвращаем обратно
         elapsed = 0f;
         while (elapsed < jumpEffectDuration / 2)
         {
@@ -268,6 +355,16 @@ public class FirstPersonMovement : MonoBehaviour
         IsRunning = false;
 
         float targetSpeed = walkSpeed;
+        
+        // Проверяем, можем ли бежать
+        bool canRunNow = canRun && isRunning && !isAiming && currentStamina > 0;
+        
+        if (canRunNow)
+        {
+            targetSpeed = runSpeed;
+            IsRunning = true;
+        }
+        
         if (speedOverrides.Count > 0)
         {
             targetSpeed = speedOverrides[speedOverrides.Count - 1]();
@@ -314,7 +411,9 @@ public class FirstPersonMovement : MonoBehaviour
         }
         else
         {
-            animator.SetFloat(movementSpeedParam, 1f);
+            // Если бежим - скорость анимации выше
+            float speedValue = isRunning ? 2f : 1f;
+            animator.SetFloat(movementSpeedParam, speedValue);
             animator.SetBool(isWalkingParam, true);
             
             if (enableAimingWalkAnimation)
@@ -379,10 +478,14 @@ public class FirstPersonMovement : MonoBehaviour
     {
         if (cameraTransform == null) return;
         
-        bobTimer += Time.deltaTime * bobSpeed;
+        // Увеличиваем скорость бобинга при беге
+        float currentBobSpeed = isRunning ? bobSpeed * 1.5f : bobSpeed;
+        float currentBobAmount = isRunning ? bobAmount * 1.2f : bobAmount;
+        
+        bobTimer += Time.deltaTime * currentBobSpeed;
         
         Vector3 newPos = cameraTransform.localPosition;
-        newPos.y = defaultCameraY + Mathf.Sin(bobTimer) * bobAmount;
+        newPos.y = defaultCameraY + Mathf.Sin(bobTimer) * currentBobAmount;
         
         cameraTransform.localPosition = newPos;
     }
