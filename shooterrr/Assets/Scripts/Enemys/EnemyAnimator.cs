@@ -41,6 +41,11 @@ public class EnemyAnimator : MonoBehaviour
     {
         if (animator != null)
         {
+            // Сбрасываем все триггеры, чтобы они не мешали смерти
+            animator.ResetTrigger("Attack");
+            animator.ResetTrigger("Hit");
+            
+            // Запускаем смерть
             animator.SetTrigger("Die");
         }
     }

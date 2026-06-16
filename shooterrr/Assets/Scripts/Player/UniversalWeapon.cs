@@ -38,13 +38,39 @@ public class MedievalWeapon : MonoBehaviour
     public int boltsPerShot = 1;
     public float spreadAngle = 2f;
     
-    [Header("Aiming Settings (Прицеливание)")]
-    public float aimingSpeedMultiplier = 0.5f;  // Множитель скорости при прицеливании
-    public bool enableAimingShake = true;       // Включить тряску при прицеливании
-    public float aimingShakeAmount = 0.02f;     // Сила тряски при прицеливании
-    public float aimingShakeSpeed = 8f;         // Скорость тряски при прицеливании
+    [Header("Aiming Settings")]
+    public float aimingSpeedMultiplier = 0.5f;
+    public bool enableAimingShake = true;
+    public float aimingShakeAmount = 0.02f;
+    public float aimingShakeSpeed = 8f;
     private float aimingShakeTimer = 0f;
     private Vector3 originalCameraPos;
+    
+    [Header("Weapon Position Sway (Покачивание позиции)")]
+    public bool enablePositionSway = true;
+    public float positionSwayAmount = 0.02f;
+    public float positionSwaySmoothness = 6f;
+    public float positionSwayClampX = 0.05f;
+    public float positionSwayClampY = 0.05f;
+    private Vector3 initialPosition;
+    private Vector3 swayPosition;
+    
+    [Header("Weapon Rotation Sway (Покачивание поворота)")]
+    public bool enableRotationSway = true;
+    public float rotationSwayAmount = 2f;        // Сила поворота
+    public float rotationSwaySmoothness = 8f;    // Плавность
+    public float rotationSwayClampX = 3f;        // Максимальный поворот по X
+    public float rotationSwayClampY = 3f;        // Максимальный поворот по Y
+    public float rotationSwayClampZ = 1.5f;      // Максимальный поворот по Z (наклон)
+    private Quaternion initialRotation;
+    private Quaternion swayRotation;
+    
+    [Header("Weapon Inertia (Инерция)")]
+    public bool enableInertia = true;
+    public float inertiaAmount = 0.5f;           // Сила инерции
+    public float inertiaSmoothness = 5f;         // Плавность инерции
+    private Vector3 inertiaVelocity;
+    private Vector3 lastMousePosition;
     
     [Header("Thrown Weapons")]
     public GameObject thrownPrefab;
@@ -102,7 +128,6 @@ public class MedievalWeapon : MonoBehaviour
         if (playerCamera == null)
             playerCamera = Camera.main;
         
-        // Сохраняем оригинальную позицию камеры
         if (playerCamera != null)
         {
             originalCameraPos = playerCamera.transform.localPosition;
@@ -121,6 +146,12 @@ public class MedievalWeapon : MonoBehaviour
         if (weaponType == WeaponType.Thrown)
             currentThrown = thrownCount;
         
+        // Сохраняем начальную позицию и поворот для Sway
+        initialPosition = transform.localPosition;
+        swayPosition = initialPosition;
+        initialRotation = transform.localRotation;
+        swayRotation = initialRotation;
+        
         UpdateUI();
         UpdateCrosshair();
     }
@@ -128,6 +159,8 @@ public class MedievalWeapon : MonoBehaviour
     void Update()
     {
         UpdateMovementAnimations();
+        HandleSway();
+        HandleInertia();
         
         if (Input.GetKeyDown(KeyCode.Alpha1))
             SwitchWeapon(WeaponType.Crossbow);
@@ -166,7 +199,6 @@ public class MedievalWeapon : MonoBehaviour
                 UpdateCrosshair();
             }
             
-            // ТРЯСКА ПРИ ПРИЦЕЛИВАНИИ
             if (isAiming && enableAimingShake && playerCamera != null)
             {
                 HandleAimingShake();
@@ -210,9 +242,93 @@ public class MedievalWeapon : MonoBehaviour
         UpdateUI();
     }
     
+    void HandleSway()
+    {
+        // === ПОЗИЦИОННЫЙ SWAY ===
+        if (enablePositionSway)
+        {
+            float mouseX = Input.GetAxis("Mouse X");
+            float mouseY = Input.GetAxis("Mouse Y");
+            
+            float currentMultiplier = isAiming ? 0.3f : 1f;
+            
+            Vector3 targetSway = new Vector3(
+                Mathf.Clamp(-mouseX * positionSwayAmount * currentMultiplier, -positionSwayClampX, positionSwayClampX),
+                Mathf.Clamp(-mouseY * positionSwayAmount * currentMultiplier, -positionSwayClampY, positionSwayClampY),
+                0f
+            );
+            
+            if (Mathf.Abs(mouseX) < 0.01f && Mathf.Abs(mouseY) < 0.01f)
+            {
+                targetSway = Vector3.zero;
+            }
+            
+            swayPosition = Vector3.Lerp(swayPosition, initialPosition + targetSway, Time.deltaTime * positionSwaySmoothness);
+            transform.localPosition = swayPosition;
+        }
+        
+        // === РОТАЦИОННЫЙ SWAY (ПОВОРОТ ОРУЖИЯ) ===
+        if (enableRotationSway && weaponType == WeaponType.Crossbow)
+        {
+            float mouseX = Input.GetAxis("Mouse X");
+            float mouseY = Input.GetAxis("Mouse Y");
+            
+            float currentMultiplier = isAiming ? 0.3f : 1f;
+            
+            // Рассчитываем поворот
+            float rotX = Mathf.Clamp(-mouseY * rotationSwayAmount * currentMultiplier, -rotationSwayClampX, rotationSwayClampX);
+            float rotY = Mathf.Clamp(mouseX * rotationSwayAmount * currentMultiplier, -rotationSwayClampY, rotationSwayClampY);
+            float rotZ = Mathf.Clamp(-mouseX * rotationSwayAmount * 0.3f * currentMultiplier, -rotationSwayClampZ, rotationSwayClampZ);
+            
+            Quaternion targetRotation = initialRotation * Quaternion.Euler(rotX, rotY, rotZ);
+            
+            if (Mathf.Abs(mouseX) < 0.01f && Mathf.Abs(mouseY) < 0.01f)
+            {
+                targetRotation = initialRotation;
+            }
+            
+            swayRotation = Quaternion.Slerp(swayRotation, targetRotation, Time.deltaTime * rotationSwaySmoothness);
+            transform.localRotation = swayRotation;
+        }
+        else
+        {
+            // Для другого оружия - возвращаем в исходное положение
+            if (enableRotationSway)
+            {
+                swayRotation = Quaternion.Slerp(swayRotation, initialRotation, Time.deltaTime * rotationSwaySmoothness);
+                transform.localRotation = swayRotation;
+            }
+        }
+    }
+    
+    void HandleInertia()
+    {
+        if (!enableInertia || weaponType != WeaponType.Crossbow) return;
+        
+        // Получаем скорость движения мыши
+        float mouseX = Input.GetAxis("Mouse X");
+        float mouseY = Input.GetAxis("Mouse Y");
+        
+        // Добавляем инерцию к позиции
+        Vector3 inertiaTarget = new Vector3(
+            -mouseX * inertiaAmount * 0.01f,
+            -mouseY * inertiaAmount * 0.01f,
+            0f
+        );
+        
+        inertiaVelocity = Vector3.Lerp(inertiaVelocity, inertiaTarget, Time.deltaTime * inertiaSmoothness);
+        
+        // Применяем инерцию к позиции (дополнительно к основному sway)
+        if (enablePositionSway)
+        {
+            Vector3 inertiaOffset = new Vector3(inertiaVelocity.x, inertiaVelocity.y, 0f);
+            Vector3 currentPos = transform.localPosition;
+            transform.localPosition = currentPos + inertiaOffset * Time.deltaTime * 2f;
+        }
+    }
+    
     void HandleAimingShake()
     {
-        // Плавная тряска камеры (эффект дыхания)
         aimingShakeTimer += Time.deltaTime * aimingShakeSpeed;
         
         float shakeX = Mathf.Sin(aimingShakeTimer) * aimingShakeAmount;
@@ -291,6 +407,12 @@ public class MedievalWeapon : MonoBehaviour
         if (animator != null)
             animator.SetTrigger("CrossbowShoot");
         
+        // Сбрасываем sway при выстреле (эффект отдачи)
+        if (enablePositionSway)
+        {
+            StartCoroutine(ShootRecoilSway());
+        }
+        
         for (int i = 0; i < boltsPerShot; i++)
         {
             Vector3 direction = GetSpreadDirection();
@@ -314,6 +436,30 @@ public class MedievalWeapon : MonoBehaviour
         }
         
         Debug.Log($"Выстрел! Урон: {damage}, Болтов: {currentBolts}/{maxBolts}");
+    }
+    
+    IEnumerator ShootRecoilSway()
+    {
+        // Эффект отдачи при выстреле (рывок вверх)
+        Vector3 recoilPos = new Vector3(0, 0.01f, -0.01f);
+        transform.localPosition += recoilPos;
+        
+        yield return new WaitForSeconds(0.05f);
+        
+        // Возврат
+        float elapsed = 0f;
+        float duration = 0.1f;
+        Vector3 startPos = transform.localPosition;
+        
+        while (elapsed < duration)
+        {
+            float t = elapsed / duration;
+            transform.localPosition = Vector3.Lerp(startPos, initialPosition, t);
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+        
+        transform.localPosition = initialPosition;
     }
     
     IEnumerator ReloadCrossbow()
@@ -524,6 +670,13 @@ public class MedievalWeapon : MonoBehaviour
                 playerCamera.transform.localPosition = originalCameraPos;
             }
         }
+        
+        // Сбрасываем позицию и поворот Sway при смене оружия
+        swayPosition = initialPosition;
+        swayRotation = initialRotation;
+        transform.localPosition = initialPosition;
+        transform.localRotation = initialRotation;
+        inertiaVelocity = Vector3.zero;
         
         nextAttackTime = 0;
         
