@@ -9,7 +9,7 @@ public enum WeaponType
     Melee
 }
 
-public class MedievalWeapon : MonoBehaviour
+public class UniversalWeapon : MonoBehaviour
 {
     [Header("Weapon Type")]
     public WeaponType weaponType = WeaponType.Crossbow;
@@ -112,6 +112,10 @@ public class MedievalWeapon : MonoBehaviour
     
     [Header("Animation")]
     public Animator animator;
+    
+    [Header("Run Animation")]
+    public string runningBoolParam = "IsRunning";  // Параметр бега в аниматоре
+    private bool isRunning = false;
     
     [Header("Crosshair")]
     public GameObject crossbowCrosshair;
@@ -344,6 +348,13 @@ public class MedievalWeapon : MonoBehaviour
         float vertical = Input.GetAxisRaw("Vertical");
         bool isMoving = Mathf.Abs(horizontal) > 0.05f || Mathf.Abs(vertical) > 0.05f;
         
+        // === ПРОВЕРКА НА БЕГ (SHIFT) ===
+        bool isShiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        isRunning = isMoving && isShiftPressed && !isAiming;
+        
+        // Устанавливаем параметр бега
+        animator.SetBool(runningBoolParam, isRunning);
+        
         if (weaponType == WeaponType.Crossbow)
         {
             if (isMoving && isAiming)
@@ -354,7 +365,9 @@ public class MedievalWeapon : MonoBehaviour
             }
             else if (isMoving && !isAiming)
             {
-                animator.SetFloat("MovementSpeed", 1f);
+                // Если бежим — скорость анимации больше
+                float speedValue = isRunning ? 2f : 1f;
+                animator.SetFloat("MovementSpeed", speedValue);
                 animator.SetBool("IsWalking", true);
                 animator.SetBool("IsAimingWalk", false);
             }
@@ -369,7 +382,8 @@ public class MedievalWeapon : MonoBehaviour
         {
             if (isMoving)
             {
-                animator.SetFloat("MovementSpeed", 1f);
+                float speedValue = isRunning ? 2f : 1f;
+                animator.SetFloat("MovementSpeed", speedValue);
                 animator.SetBool("IsWalking", true);
             }
             else
@@ -420,12 +434,7 @@ public class MedievalWeapon : MonoBehaviour
                 RaycastHit hit;
                 if (Physics.Raycast(playerCamera.transform.position, direction, out hit, crossbowRange))
                 {
-                    Debug.Log($"=== RAYCAST ПОПАЛ В: {hit.transform.name} ===");
                     HandleRangedHit(hit.transform, hit.point, hit.normal);
-                }
-                else
-                {
-                    Debug.Log("=== RAYCAST НИКУДА НЕ ПОПАЛ ===");
                 }
             }
         }
@@ -531,7 +540,7 @@ public class MedievalWeapon : MonoBehaviour
         RaycastHit hit;
         if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out hit, meleeRange, meleeLayers))
         {
-            Debug.Log($"=== MELEE ПОПАЛ В: {hit.transform.name} ===");
+            Debug.Log($"Ближняя атака попала в: {hit.transform.name}");
             
             if (hitEffect != null)
             {
@@ -550,7 +559,7 @@ public class MedievalWeapon : MonoBehaviour
         {
             if (collider.transform != transform && collider.transform != transform.root)
             {
-                Debug.Log($"=== MELEE SPHERE ПОПАЛ В: {collider.name} ===");
+                Debug.Log($"Ближняя атака (сфера) попала в: {collider.name}");
                 HandleMeleeHit(collider.transform, collider.transform.position, Vector3.up);
             }
         }
@@ -559,161 +568,47 @@ public class MedievalWeapon : MonoBehaviour
             StartCoroutine(SlowMovement());
     }
     
-    // ========== ОБРАБОТКА УРОНА ==========
-    
     void HandleRangedHit(Transform target, Vector3 hitPoint, Vector3 normal)
     {
-        Debug.Log($"=== ОБРАБОТКА RANGED HIT ===");
-        Debug.Log($"Цель: {target.name}, тег: {target.tag}");
-        Debug.Log($"Корень: {target.root.name}, тег корня: {target.root.tag}");
-        
-        // 1. ПРОВЕРКА ПО ТЕГУ КОРНЯ
-        if (target.root.CompareTag("Boss"))
+        Enemy enemy = target.root.GetComponent<Enemy>();
+        if (enemy != null)
         {
-            Debug.Log(">>> НАШЕЛ БОССА ПО ТЕГУ КОРНЯ!");
-            BossEnemy boss = target.root.GetComponent<BossEnemy>();
-            if (boss != null)
-            {
-                Debug.Log($">>> ЗОВУ TakeDamage у босса! Урон: {damage}");
-                boss.TakeDamage(damage, hitPoint);
-                return;
-            }
-            else
-            {
-                Debug.LogError(">>> ЕСТЬ ТЕГ Boss, НО НЕТ КОМПОНЕНТА BossEnemy!");
-            }
-        }
-        
-        if (target.root.CompareTag("Enemy"))
-        {
-            Debug.Log(">>> НАШЕЛ ВРАГА ПО ТЕГУ КОРНЯ!");
-            Enemy enemy = target.root.GetComponent<Enemy>();
-            if (enemy != null)
-            {
-                Debug.Log($">>> ЗОВУ TakeDamage у врага! Урон: {damage}");
-                enemy.TakeDamage(damage, hitPoint);
-                return;
-            }
-            else
-            {
-                Debug.LogError(">>> ЕСТЬ ТЕГ Enemy, НО НЕТ КОМПОНЕНТА Enemy!");
-            }
-        }
-        
-        // 2. ПРОВЕРКА НАПРЯМУЮ
-        BossEnemy bossDirect = target.GetComponent<BossEnemy>();
-        if (bossDirect != null)
-        {
-            Debug.Log(">>> НАШЕЛ БОССА НАПРЯМУЮ!");
-            bossDirect.TakeDamage(damage, hitPoint);
+            enemy.TakeDamage(damage);
             return;
         }
         
-        Enemy enemyDirect = target.GetComponent<Enemy>();
-        if (enemyDirect != null)
+        BossEnemy boss = target.root.GetComponent<BossEnemy>();
+        if (boss != null)
         {
-            Debug.Log(">>> НАШЕЛ ВРАГА НАПРЯМУЮ!");
-            enemyDirect.TakeDamage(damage, hitPoint);
+            boss.TakeDamage(damage);
             return;
         }
         
-        // 3. ПРОВЕРКА НА РОДИТЕЛЯ (если коллайдер на дочернем объекте)
-        BossEnemy bossInParent = target.GetComponentInParent<BossEnemy>();
-        if (bossInParent != null)
-        {
-            Debug.Log(">>> НАШЕЛ БОССА В РОДИТЕЛЕ!");
-            bossInParent.TakeDamage(damage, hitPoint);
-            return;
-        }
-        
-        Enemy enemyInParent = target.GetComponentInParent<Enemy>();
-        if (enemyInParent != null)
-        {
-            Debug.Log(">>> НАШЕЛ ВРАГА В РОДИТЕЛЕ!");
-            enemyInParent.TakeDamage(damage, hitPoint);
-            return;
-        }
-        
-        // 4. РАЗРУШАЕМЫЙ ОБЪЕКТ
-        DestructibleObject destructible = target.GetComponent<DestructibleObject>();
-        if (destructible != null)
-        {
-            Debug.Log(">>> РАЗРУШАЕМЫЙ ОБЪЕКТ!");
-            destructible.TakeDamage(damage);
-            return;
-        }
-        
-        // 5. ЭФФЕКТ В СТЕНУ
-        Debug.Log($">>> НЕ ВРАГ! Попадание в {target.name}");
         if (impactEffect != null)
         {
-            GameObject impact = Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
-            Destroy(impact, 1f);
+            Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
         }
     }
     
     void HandleMeleeHit(Transform target, Vector3 hitPoint, Vector3 normal)
     {
-        Debug.Log($"=== ОБРАБОТКА MELEE HIT ===");
-        Debug.Log($"Цель: {target.name}, тег: {target.tag}");
-        Debug.Log($"Корень: {target.root.name}, тег корня: {target.root.tag}");
-        
-        // 1. ПРОВЕРКА ПО ТЕГУ КОРНЯ
-        if (target.root.CompareTag("Boss"))
+        Enemy enemy = target.root.GetComponent<Enemy>();
+        if (enemy != null)
         {
-            Debug.Log(">>> MELEE: НАШЕЛ БОССА ПО ТЕГУ КОРНЯ!");
-            BossEnemy boss = target.root.GetComponent<BossEnemy>();
-            if (boss != null)
-            {
-                Debug.Log($">>> MELEE: ЗОВУ TakeDamage у босса! Урон: {meleeDamage}");
-                boss.TakeDamage(meleeDamage, hitPoint);
-                return;
-            }
-        }
-        
-        if (target.root.CompareTag("Enemy"))
-        {
-            Debug.Log(">>> MELEE: НАШЕЛ ВРАГА ПО ТЕГУ КОРНЯ!");
-            Enemy enemy = target.root.GetComponent<Enemy>();
-            if (enemy != null)
-            {
-                Debug.Log($">>> MELEE: ЗОВУ TakeDamage у врага! Урон: {meleeDamage}");
-                enemy.TakeDamage(meleeDamage, hitPoint);
-                return;
-            }
-        }
-        
-        // 2. ПРОВЕРКА НАПРЯМУЮ
-        BossEnemy bossDirect = target.GetComponent<BossEnemy>();
-        if (bossDirect != null)
-        {
-            Debug.Log(">>> MELEE: НАШЕЛ БОССА НАПРЯМУЮ!");
-            bossDirect.TakeDamage(meleeDamage, hitPoint);
+            enemy.TakeDamage(meleeDamage);
             return;
         }
         
-        Enemy enemyDirect = target.GetComponent<Enemy>();
-        if (enemyDirect != null)
+        BossEnemy boss = target.root.GetComponent<BossEnemy>();
+        if (boss != null)
         {
-            Debug.Log(">>> MELEE: НАШЕЛ ВРАГА НАПРЯМУЮ!");
-            enemyDirect.TakeDamage(meleeDamage, hitPoint);
+            boss.TakeDamage(meleeDamage);
             return;
         }
         
-        // 3. РАЗРУШАЕМЫЙ ОБЪЕКТ
-        DestructibleObject destructible = target.GetComponent<DestructibleObject>();
-        if (destructible != null)
-        {
-            Debug.Log(">>> MELEE: РАЗРУШАЕМЫЙ ОБЪЕКТ!");
-            destructible.TakeDamage(meleeDamage);
-            return;
-        }
-        
-        Debug.Log($">>> MELEE: НЕ ВРАГ! Попадание в {target.name}");
         if (impactEffect != null)
         {
-            GameObject impact = Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
-            Destroy(impact, 1f);
+            Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
         }
     }
     
@@ -788,6 +683,7 @@ public class MedievalWeapon : MonoBehaviour
         {
             animator.SetBool("IsWalking", false);
             animator.SetBool("IsAimingWalk", false);
+            animator.SetBool(runningBoolParam, false);
             animator.SetFloat("MovementSpeed", 0f);
         }
         

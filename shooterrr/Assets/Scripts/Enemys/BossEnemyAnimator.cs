@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.AI;
 
 public class BossEnemyAnimator : MonoBehaviour
@@ -9,13 +9,7 @@ public class BossEnemyAnimator : MonoBehaviour
     {
         animator = GetComponent<Animator>();
         if (animator == null)
-        {
-            Debug.LogError("Animator не найден на " + gameObject.name);
-        }
-        else
-        {
-            Debug.Log("Animator найден на " + gameObject.name);
-        }
+            Debug.LogError("Animator not found on " + gameObject.name);
     }
     
     void Update()
@@ -32,28 +26,19 @@ public class BossEnemyAnimator : MonoBehaviour
     public void TriggerAttack()
     {
         if (animator != null)
-        {
-            animator.SetTrigger("attack");
-            Debug.Log("Boss Attack Trigger вызван!");
-        }
+            animator.SetTrigger("attack"); // ← МАЛЕНЬКАЯ
     }
     
     public void TriggerTopAttack()
     {
         if (animator != null)
-        {
             animator.SetTrigger("TopAttack");
-            Debug.Log("Boss TopAttack Trigger вызван!");
-        }
     }
     
     public void TriggerHit()
     {
         if (animator != null)
-        {
-            animator.SetTrigger("hit");
-            Debug.Log("Boss Hit Trigger вызван!");
-        }
+            animator.SetTrigger("hit"); // ← МАЛЕНЬКАЯ
     }
     
     public void TriggerDeath()
@@ -64,7 +49,6 @@ public class BossEnemyAnimator : MonoBehaviour
             animator.ResetTrigger("TopAttack");
             animator.ResetTrigger("hit");
             animator.SetTrigger("dying");
-            Debug.Log("Boss Death Trigger вызван!");
         }
     }
 }

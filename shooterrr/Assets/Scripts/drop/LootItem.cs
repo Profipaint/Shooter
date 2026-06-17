@@ -2,86 +2,81 @@ using UnityEngine;
 
 public class LootItem : MonoBehaviour
 {
-    [Header("Loot Settings")]
-    public string itemName = "Bolts";
-    public int amount = 5;
+    public int ammoAmount = 5;
+    public int thrownAmount = 1;
     public float pickupRange = 2f;
-    public KeyCode pickupKey = KeyCode.E;
     
-    [Header("Effects")]
-    public GameObject pickupEffect;
-    public AudioClip pickupSound;
-    
+    private bool isPickedUp = false;
     private Transform player;
-    private AudioSource audioSource;
+    private bool isNear = false;
     
     void Start()
     {
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
-        
-        audioSource = GetComponent<AudioSource>();
-        if (audioSource == null && pickupSound != null)
-            audioSource = gameObject.AddComponent<AudioSource>();
-        
-        // Опускаем лут на пол
-        PlaceOnGround();
-    }
-    
-    void PlaceOnGround()
-    {
-        // Бросаем луч вниз, чтобы найти пол
-        RaycastHit hit;
-        if (Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out hit, 2f))
-        {
-            // Ставим объект прямо на пол
-            transform.position = hit.point + Vector3.up * 0.05f;
-        }
-        
-        // Выравниваем поворот (чтобы лежал ровно)
-        transform.rotation = Quaternion.identity;
     }
     
     void Update()
     {
-        // НИКАКОГО ВРАЩЕНИЯ - просто проверка на подбор
-        if (player != null)
+        if (isPickedUp) return;
+        if (player == null) return;
+        
+        float distance = Vector3.Distance(transform.position, player.position);
+        isNear = distance <= pickupRange;
+        
+        if (isNear && Input.GetKeyDown(KeyCode.E))
         {
-            float distance = Vector3.Distance(transform.position, player.position);
-            
-            if (distance <= pickupRange && Input.GetKeyDown(pickupKey))
-            {
-                Pickup();
-            }
+            PickUp();
         }
     }
     
-    void Pickup()
+    void PickUp()
     {
-        // Находим скрипт оружия и добавляем болты
-        if (player != null)
+        if (isPickedUp) return;
+        isPickedUp = true;
+        
+        UniversalWeapon weapon = player.GetComponentInChildren<UniversalWeapon>();
+        
+        if (weapon != null)
         {
-            MedievalWeapon weapon = player.GetComponentInChildren<MedievalWeapon>();
-            if (weapon != null)
-            {
-                weapon.AddBolts(amount);
-                Debug.Log($"Подобрано {amount} болтов!");
-            }
+            weapon.AddBolts(ammoAmount);
+            weapon.AddThrownWeapons(thrownAmount);
+            Debug.Log($"Подобрано: болты +{ammoAmount}, метательное +{thrownAmount}");
+        }
+        else
+        {
+            Debug.LogWarning("UniversalWeapon не найден на оружии игрока!");
         }
         
-        // Эффекты
-        if (pickupEffect != null)
-            Instantiate(pickupEffect, transform.position, Quaternion.identity);
-        
-        if (pickupSound != null && audioSource != null)
-            audioSource.PlayOneShot(pickupSound);
-        
-        // Уничтожаем лут
         Destroy(gameObject, 0.1f);
+    }
+    
+    // Подсказка "E" над лутом
+    void OnGUI()
+    {
+        if (!isNear || isPickedUp) return;
+        if (Camera.main == null) return;
+        
+        Vector3 screenPos = Camera.main.WorldToScreenPoint(transform.position + Vector3.up * 1f);
+        
+        // Если объект за камерой — не показываем
+        if (screenPos.z < 0) return;
+        
+        GUI.Label(
+            new Rect(screenPos.x - 50, Screen.height - screenPos.y - 20, 100, 30),
+            "[E] Подобрать",
+            new GUIStyle()
+            {
+                fontSize = 18,
+                fontStyle = FontStyle.Bold,
+                normal = { textColor = Color.white },
+                alignment = TextAnchor.MiddleCenter
+            }
+        );
     }
     
     void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.yellow;
+        Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, pickupRange);
     }
 }

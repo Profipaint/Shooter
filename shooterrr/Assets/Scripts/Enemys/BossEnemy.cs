@@ -1,92 +1,68 @@
-using UnityEngine;
+Ôªøusing UnityEngine;
 using UnityEngine.AI;
 using System.Collections;
 
 public class BossEnemy : MonoBehaviour
 {
-    [Header("Health")]
     public float maxHealth = 200f;
     private float currentHealth;
     
-    [Header("Movement")]
-    public float moveSpeed = 2.5f;
-    public float stoppingDistance = 3f;
-    public float chaseRange = 20f;
+    public float attackDamage = 15f;
+    public float attackCooldown = 1.2f;
     public float attackRange = 2.5f;
+    public float chaseRange = 20f;
+    
+    private float nextAttackTime = 0f;
     private Transform player;
     private NavMeshAgent agent;
     
-    [Header("Normal Attack")]
-    public float normalDamage = 15f;
-    public float normalAttackCooldown = 1.2f;
-    public float normalAttackDelay = 0.4f;
-    public float normalAttackDuration = 0.8f;
-    private float nextNormalAttackTime = 0f;
+    public BossEnemyAnimator bossAnimator;
     
-    [Header("Special Attack")]
+    // === –û–°–û–ë–ê–Ø –ê–¢–ê–ö–ê ===
     public bool enableSpecialAttack = true;
     public float specialDamage = 40f;
-    public float specialAttackCooldown = 5f;
-    public float specialAttackRange = 3.5f;
-    public float specialAttackChance = 0.3f;
-    public float specialAttackWindup = 0.5f;
-    public float specialAttackDuration = 1.5f;
+    public float specialAttackCooldown = 8f;
+    public float specialAttackRange = 4f;
     public float specialAttackSpeedMultiplier = 4f;
+    public float specialAttackWindup = 1f;
+    public float specialAttackDuration = 1.5f;
     private float nextSpecialAttackTime = 0f;
     private bool isSpecialAttacking = false;
     private bool isSpecialCharging = false;
+    private float originalMoveSpeed;
     
-    [Header("Special Attack Effects")]
     public GameObject specialAttackImpactEffect;
     public AudioClip specialAttackSound;
     public AudioClip specialChargeSound;
     
-    [Header("Animation")]
-    public BossEnemyAnimator bossAnimator;
-    
-    [Header("Effects")]
-    public GameObject deathEffect;
-    public GameObject hitEffect;
-    public AudioClip deathSound;
-    public AudioClip attackSound;
-    public AudioClip hurtSound;
-    private AudioSource audioSource;
-    
-    [Header("Loot")]
     public GameObject lootPrefab;
     public float lootDropChance = 1f;
     
-    [Header("States")]
-    public float detectionRange = 15f;
-    public bool enableDebugLogs = true;
+    public GameObject deathEffect;
+    public GameObject hitEffect;
+    public AudioClip deathSound;
+    public AudioClip hitSound;
+    public AudioClip attackSound;
+    private AudioSource audioSource;
+    
     private bool isDead = false;
     private bool isTakingHit = false;
-    private bool blockAttackAfterHit = false;
-    private BossState currentState = BossState.Idle;
-    private float originalMoveSpeed;
-    
-    private enum BossState
-    {
-        Idle,
-        Chasing,
-        Attacking,
-        SpecialAttacking,
-        Dead
-    }
+    private bool isAttacking = false;
+    private bool isMovementLocked = false;
     
     void Start()
     {
         currentHealth = maxHealth;
         player = GameObject.FindGameObjectWithTag("Player")?.transform;
-        
         agent = GetComponent<NavMeshAgent>();
+        
         if (agent != null)
         {
-            agent.speed = moveSpeed;
-            agent.stoppingDistance = stoppingDistance;
+            agent.speed = 2.5f;
+            agent.stoppingDistance = attackRange - 0.5f;
         }
         
-        originalMoveSpeed = moveSpeed;
+        originalMoveSpeed = agent != null ? agent.speed : 2.5f;
         
         if (bossAnimator == null)
             bossAnimator = GetComponentInChildren<BossEnemyAnimator>();
@@ -95,200 +71,139 @@ public class BossEnemy : MonoBehaviour
         if (audioSource == null)
             audioSource = gameObject.AddComponent<AudioSource>();
         
-        nextSpecialAttackTime = specialAttackCooldown * 0.5f;
+        nextSpecialAttackTime = specialAttackCooldown * 0.3f;
     }
     
     void Update()
     {
         if (isDead || player == null) return;
-        if (currentState == BossState.Dead) return;
         
-        if (isTakingHit || isSpecialAttacking || isAttacking() || isSpecialCharging)
+        if (isTakingHit || isAttacking || isSpecialAttacking || isSpecialCharging || isMovementLocked)
+        {
+            if (agent != null)
+            {
+                agent.isStopped = true;
+                agent.velocity = Vector3.zero;
+            }
+            return;
+        }
+        
+        float distance = Vector3.Distance(transform.position, player.position);
+        
+        if (enableSpecialAttack && Time.time >= nextSpecialAttackTime && distance <= specialAttackRange)
+        {
+            StartCoroutine(SpecialAttackSequence());
+            return;
+        }
+        
+        if (distance <= attackRange)
         {
             if (agent != null) agent.isStopped = true;
-            return;
+            
+            if (Time.time >= nextAttackTime && !isAttacking)
+            {
+                StartCoroutine(PerformAttack());
+            }
         }
-        
-        if (blockAttackAfterHit)
+        else if (distance <= chaseRange)
         {
-            if (agent != null) agent.isStopped = false;
-            ChasePlayer();
-            return;
+            if (agent != null)
+            {
+                agent.isStopped = false;
+                agent.SetDestination(player.position);
+            }
         }
-        
-        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
-        
-        switch (currentState)
+        else
         {
-            case BossState.Idle:
-                if (distanceToPlayer <= detectionRange)
-                    currentState = BossState.Chasing;
-                break;
-                
-            case BossState.Chasing:
-                if (distanceToPlayer <= attackRange && !isSpecialAttacking)
-                {
-                    if (enableSpecialAttack && 
-                        Time.time >= nextSpecialAttackTime && 
-                        Random.value < specialAttackChance)
-                    {
-                        currentState = BossState.SpecialAttacking;
-                    }
-                    else
-                    {
-                        currentState = BossState.Attacking;
-                    }
-                }
-                else if (distanceToPlayer > chaseRange)
-                {
-                    currentState = BossState.Idle;
-                    if (agent != null) agent.isStopped = true;
-                }
-                else
-                {
-                    ChasePlayer();
-                }
-                break;
-                
-            case BossState.Attacking:
-                if (distanceToPlayer > attackRange)
-                {
-                    currentState = BossState.Chasing;
-                }
-                else
-                {
-                    NormalAttack();
-                }
-                break;
-                
-            case BossState.SpecialAttacking:
-                if (distanceToPlayer > specialAttackRange)
-                {
-                    currentState = BossState.Chasing;
-                }
-                else
-                {
-                    SpecialAttack();
-                }
-                break;
+            if (agent != null)
+                agent.isStopped = true;
         }
     }
     
-    void ChasePlayer()
+    System.Collections.IEnumerator PerformAttack()
     {
-        if (isAttacking() || isTakingHit || isSpecialAttacking || isSpecialCharging) 
+        isAttacking = true;
+        isMovementLocked = true;
+        nextAttackTime = Time.time + attackCooldown;
+        
+        if (agent != null)
         {
-            if (agent != null) agent.isStopped = true;
-            return;
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
         }
         
-        if (agent != null && agent.isActiveAndEnabled)
+        if (bossAnimator != null)
+            bossAnimator.TriggerAttack();
+        
+        if (attackSound != null && audioSource != null)
+            audioSource.PlayOneShot(attackSound);
+        
+        PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+        if (playerHealth != null && Vector3.Distance(transform.position, player.position) <= attackRange)
+            playerHealth.TakeDamage(attackDamage);
+        
+        yield return new WaitForSeconds(0.8f);
+        
+        isAttacking = false;
+        isMovementLocked = false;
+        if (agent != null) agent.isStopped = false;
+    }
+    
+    System.Collections.IEnumerator SpecialAttackSequence()
+    {
+        if (isSpecialAttacking) yield break;
+        
+        isSpecialAttacking = true;
+        isSpecialCharging = true;
+        isMovementLocked = true;
+        nextSpecialAttackTime = Time.time + specialAttackCooldown;
+        
+        float boostedSpeed = originalMoveSpeed * specialAttackSpeedMultiplier;
+        if (agent != null)
         {
+            agent.speed = boostedSpeed;
             agent.isStopped = false;
             agent.SetDestination(player.position);
         }
-        else
-        {
-            Vector3 direction = (player.position - transform.position).normalized;
-            transform.position += direction * moveSpeed * Time.deltaTime;
-            transform.LookAt(player);
-        }
-    }
-    
-    bool isAttacking()
-    {
-        return currentState == BossState.Attacking;
-    }
-    
-    void NormalAttack()
-    {
-        if (Time.time >= nextNormalAttackTime)
-        {
-            nextNormalAttackTime = Time.time + normalAttackCooldown;
-            
-            if (agent != null) agent.isStopped = true;
-            
-            if (bossAnimator != null)
-                bossAnimator.TriggerAttack();
-            
-            if (attackSound != null && audioSource != null)
-                audioSource.PlayOneShot(attackSound);
-            
-            Invoke(nameof(DelayedNormalDamage), normalAttackDelay);
-            StartCoroutine(EndAttackAfterDelay(normalAttackDuration));
-        }
-    }
-    
-    void DelayedNormalDamage()
-    {
-        if (player == null) return;
         
-        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+        if (specialChargeSound != null && audioSource != null)
+            audioSource.PlayOneShot(specialChargeSound);
         
-        if (distanceToPlayer <= attackRange)
+        float windupTimer = 0f;
+        while (windupTimer < specialAttackWindup && player != null)
         {
-            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
-            if (playerHealth != null)
+            windupTimer += Time.deltaTime;
+            
+            if (agent != null && player != null)
             {
-                playerHealth.TakeDamage(normalDamage);
+                agent.SetDestination(player.position);
+                if (Vector3.Distance(transform.position, player.position) <= attackRange)
+                    break;
             }
+            
+            yield return null;
         }
-    }
-    
-    void SpecialAttack()
-    {
-        if (Time.time >= nextSpecialAttackTime && !isSpecialAttacking)
-        {
-            isSpecialAttacking = true;
-            nextSpecialAttackTime = Time.time + specialAttackCooldown;
-            
-            if (agent != null) agent.isStopped = true;
-            
-            StartCoroutine(SpecialAttackSpeedBoost());
-            
-            if (bossAnimator != null)
-                bossAnimator.TriggerTopAttack();
-            
-            if (specialChargeSound != null && audioSource != null)
-                audioSource.PlayOneShot(specialChargeSound);
-            
-            StartCoroutine(SpecialAttackSequence());
-        }
-        else
-        {
-            currentState = BossState.Attacking;
-        }
-    }
-    
-    IEnumerator SpecialAttackSpeedBoost()
-    {
-        isSpecialCharging = true;
-        
-        float boostedSpeed = originalMoveSpeed * specialAttackSpeedMultiplier;
-        moveSpeed = boostedSpeed;
-        if (agent != null) agent.speed = boostedSpeed;
-        
-        yield return new WaitForSeconds(specialAttackWindup);
         
         isSpecialCharging = false;
+        isMovementLocked = true;
         
-        yield return new WaitForSeconds(specialAttackDuration - specialAttackWindup);
+        if (agent != null)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+            agent.speed = originalMoveSpeed;
+        }
         
-        moveSpeed = originalMoveSpeed;
-        if (agent != null) agent.speed = originalMoveSpeed;
-    }
-    
-    IEnumerator SpecialAttackSequence()
-    {
-        yield return new WaitForSeconds(specialAttackWindup);
+        if (bossAnimator != null)
+            bossAnimator.TriggerTopAttack();
+        
+        if (specialAttackSound != null && audioSource != null)
+            audioSource.PlayOneShot(specialAttackSound);
         
         if (specialAttackImpactEffect != null && player != null)
         {
             Instantiate(specialAttackImpactEffect, player.position + Vector3.up * 0.5f, Quaternion.identity);
         }
-        
-        if (specialAttackSound != null && audioSource != null)
-            audioSource.PlayOneShot(specialAttackSound);
         
         if (player != null)
         {
@@ -303,128 +218,114 @@ public class BossEnemy : MonoBehaviour
             }
         }
         
-        yield return new WaitForSeconds(specialAttackDuration - specialAttackWindup);
+        yield return new WaitForSeconds(specialAttackDuration);
+        
+        if (agent != null)
+        {
+            agent.speed = originalMoveSpeed;
+            agent.isStopped = false;
+        }
         
         isSpecialAttacking = false;
-        currentState = BossState.Chasing;
+        isMovementLocked = false;
     }
     
-    IEnumerator EndAttackAfterDelay(float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        if (currentState == BossState.Attacking)
-        {
-            currentState = BossState.Chasing;
-            if (agent != null && !isDead)
-                agent.isStopped = false;
-        }
-    }
-    
-    public void TakeDamage(float damage, Vector3? hitPoint = null)
+    public void TakeDamage(float damage)
     {
         if (isDead) return;
         if (isTakingHit) return;
         
         currentHealth -= damage;
+        Debug.Log($"Boss health: {currentHealth}");
         
-        if (enableDebugLogs) Debug.Log($"¡Œ——: ÔÓÎÛ˜ËÎ ÛÓÌ {damage}. ŒÒÚ‡ÎÓÒ¸: {currentHealth}/{maxHealth}");
-        
-        if (currentHealth <= 0)
-        {
-            Die();
-            return;
-        }
-        
-        if (isSpecialAttacking)
+        if (isAttacking || isSpecialAttacking || isSpecialCharging)
         {
             StopAllCoroutines();
+            isAttacking = false;
             isSpecialAttacking = false;
             isSpecialCharging = false;
-            moveSpeed = originalMoveSpeed;
-            if (agent != null) agent.speed = originalMoveSpeed;
-            currentState = BossState.Chasing;
+            
+            if (agent != null)
+            {
+                agent.speed = originalMoveSpeed;
+                agent.isStopped = true;
+                agent.velocity = Vector3.zero;
+            }
         }
         
-        blockAttackAfterHit = true;
-        StartCoroutine(HitAnimationSequence());
+        StartCoroutine(HitAnimation());
         
         if (bossAnimator != null)
             bossAnimator.TriggerHit();
         
-        if (hitEffect != null && hitPoint.HasValue)
-            Instantiate(hitEffect, hitPoint.Value, Quaternion.identity);
+        if (hitEffect != null)
+        {
+            Vector3 spawnPos = transform.position + Vector3.up * 0.5f;
+            Instantiate(hitEffect, spawnPos, Quaternion.identity);
+        }
         
-        if (hurtSound != null && audioSource != null)
-            audioSource.PlayOneShot(hurtSound);
+        if (hitSound != null && audioSource != null)
+            audioSource.PlayOneShot(hitSound);
         
-        StartCoroutine(ReturnToChaseAfterHit());
+        if (currentHealth <= 0)
+            Die();
     }
     
-    IEnumerator HitAnimationSequence()
+    System.Collections.IEnumerator HitAnimation()
     {
         isTakingHit = true;
-        if (agent != null) agent.isStopped = true;
-        yield return new WaitForSeconds(0.6f);
-        isTakingHit = false;
-    }
-    
-    IEnumerator ReturnToChaseAfterHit()
-    {
-        yield return new WaitForSeconds(0.3f);
-        blockAttackAfterHit = false;
+        isMovementLocked = true;
         
-        if (!isDead && !isAttacking() && !isSpecialAttacking)
+        if (agent != null)
         {
-            currentState = BossState.Chasing;
-            if (agent != null) agent.isStopped = false;
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
         }
+        
+        yield return new WaitForSeconds(0.5f);
+        
+        isTakingHit = false;
+        isMovementLocked = false;
+        if (agent != null) agent.isStopped = false;
     }
     
     void Die()
     {
         if (isDead) return;
-        
         isDead = true;
-        currentState = BossState.Dead;
         
-        Debug.Log($"=== ¡Œ—— {name} œŒ¬≈–∆≈Õ! ===");
+        Debug.Log("Boss died!");
         
-        StopAllCoroutines();
-        
-        Transform root = transform.root;
-        
-        NavMeshAgent rootAgent = root.GetComponent<NavMeshAgent>();
-        if (rootAgent != null)
+        if (agent != null)
         {
-            rootAgent.isStopped = true;
-            rootAgent.enabled = false;
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+            agent.enabled = false;
         }
         
-        Collider rootCollider = root.GetComponent<Collider>();
-        if (rootCollider != null) rootCollider.enabled = false;
-        
-        isTakingHit = false;
-        isSpecialAttacking = false;
-        isSpecialCharging = false;
-        blockAttackAfterHit = false;
-        
-        moveSpeed = originalMoveSpeed;
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = false;
         
         if (bossAnimator != null)
             bossAnimator.TriggerDeath();
         
         if (deathEffect != null)
-            Instantiate(deathEffect, root.position, Quaternion.identity);
+            Instantiate(deathEffect, transform.position, Quaternion.identity);
         
         if (deathSound != null && audioSource != null)
             audioSource.PlayOneShot(deathSound);
         
         DropLoot();
         
-        this.enabled = false;
-        
-        // ¡Œ—— »—◊≈«¿≈“ ◊≈–≈« 8 —≈ ”Õƒ
-        Destroy(root.gameObject, 8f);
+        // === –ë–û–°–° –°–ö–†–´–í–ê–ï–¢–°–Ø –ß–ï–†–ï–ó 8 –°–ï–ö–£–ù–î (–ù–ï –£–î–ê–õ–Ø–ï–¢–°–Ø) ===
+        StartCoroutine(HideAfterDelay(8f));
+    }
+    
+    System.Collections.IEnumerator HideAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        gameObject.SetActive(false);
+        Debug.Log("Boss —Å–∫—Ä—ã—Ç!");
     }
     
     void DropLoot()
@@ -432,20 +333,18 @@ public class BossEnemy : MonoBehaviour
         if (lootPrefab == null) return;
         if (Random.value > lootDropChance) return;
         
-        Vector3 rootPos = transform.root.position;
+        Vector3 pos = transform.position;
+        pos.y = 0.05f;
         
         int lootCount = Random.Range(3, 6);
         for (int i = 0; i < lootCount; i++)
         {
-            Vector3 randomOffset = new Vector3(
-                Random.Range(-1f, 1f),
-                0.05f,
-                Random.Range(-1f, 1f)
-            );
-            Instantiate(lootPrefab, rootPos + randomOffset, Quaternion.identity);
+            Vector3 offset = new Vector3(Random.Range(-0.5f, 0.5f), 0.05f, Random.Range(-0.5f, 0.5f));
+            Instantiate(lootPrefab, pos + offset, Quaternion.identity);
         }
     }
     
+    // === –ú–ï–¢–û–î –î–õ–Ø –ü–†–û–í–ï–†–ö–ò –ó–î–û–†–û–í–¨–Ø ===
     public float GetCurrentHealth()
     {
         return currentHealth;
@@ -455,11 +354,9 @@ public class BossEnemy : MonoBehaviour
     {
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, attackRange);
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, chaseRange);
         Gizmos.color = Color.magenta;
         Gizmos.DrawWireSphere(transform.position, specialAttackRange);
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, detectionRange);
-        Gizmos.color = Color.green;
-        Gizmos.DrawWireSphere(transform.position, chaseRange);
     }
 }
