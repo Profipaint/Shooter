@@ -8,6 +8,14 @@ public class EnemyAnimator : MonoBehaviour
     void Start()
     {
         animator = GetComponent<Animator>();
+        if (animator == null)
+        {
+            Debug.LogError("Animator не найден на " + gameObject.name);
+        }
+        else
+        {
+            Debug.Log("Animator найден на " + gameObject.name);
+        }
     }
     
     void Update()
@@ -26,6 +34,7 @@ public class EnemyAnimator : MonoBehaviour
         if (animator != null)
         {
             animator.SetTrigger("Attack");
+            Debug.Log("Attack Trigger вызван!");
         }
     }
     
@@ -33,7 +42,8 @@ public class EnemyAnimator : MonoBehaviour
     {
         if (animator != null)
         {
-            animator.SetTrigger("Hit");
+            animator.SetTrigger("hit");
+            Debug.Log("Hit Trigger вызван!");
         }
     }
     
@@ -41,12 +51,10 @@ public class EnemyAnimator : MonoBehaviour
     {
         if (animator != null)
         {
-            // Сбрасываем все триггеры, чтобы они не мешали смерти
             animator.ResetTrigger("Attack");
-            animator.ResetTrigger("Hit");
-            
-            // Запускаем смерть
-            animator.SetTrigger("Die");
+            animator.ResetTrigger("hit");
+            animator.SetTrigger("dying");
+            Debug.Log("Death Trigger вызван!");
         }
     }
 }

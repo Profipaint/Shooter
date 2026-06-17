@@ -77,13 +77,6 @@ public class Enemy : MonoBehaviour
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
             audioSource = gameObject.AddComponent<AudioSource>();
-        
-        if (enableDebugLogs)
-        {
-            Debug.Log($"=== СТРУКТУРА ВРАГА ===");
-            Debug.Log($"Корневой объект: {transform.root.name}");
-            Debug.Log($"Дочерний объект (модель): {transform.name}");
-        }
     }
     
     void Update()
@@ -175,18 +168,23 @@ public class Enemy : MonoBehaviour
             if (agent != null) agent.isStopped = true;
             
             if (enemyAnimator != null) enemyAnimator.TriggerAttack();
-            if (attackSound != null && audioSource != null) audioSource.PlayOneShot(attackSound);
+            
+            if (attackSound != null && audioSource != null)
+                audioSource.PlayOneShot(attackSound);
             
             bool isMiss = Random.value < missChance;
             
             if (isMiss)
             {
-                if (missSound != null && audioSource != null) audioSource.PlayOneShot(missSound);
+                if (missSound != null && audioSource != null)
+                    audioSource.PlayOneShot(missSound);
+                
                 if (missEffect != null && player != null)
                 {
                     Vector3 missPosition = player.position + Random.insideUnitSphere * 1f;
                     Instantiate(missEffect, missPosition, Quaternion.identity);
                 }
+                
                 StartCoroutine(EndAttackAfterDelay(attackDuration));
             }
             else
@@ -207,7 +205,9 @@ public class Enemy : MonoBehaviour
         {
             PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
             if (playerHealth != null)
+            {
                 playerHealth.TakeDamage(attackDamage);
+            }
         }
         else
         {
@@ -229,6 +229,7 @@ public class Enemy : MonoBehaviour
     void EndAttack()
     {
         isAttacking = false;
+        
         if (agent != null && !isDead && !isTakingHit && currentState == EnemyState.Attacking)
         {
             agent.isStopped = false;
@@ -298,12 +299,10 @@ public class Enemy : MonoBehaviour
         isDead = true;
         currentState = EnemyState.Dead;
         
-        Debug.Log($"Враг: УМИРАЮ!");
+        Debug.Log($"Враг {name}: УМИРАЮ!");
         
-        // 1. ОСТАНАВЛИВАЕМ ВСЕ КОРОУТИНЫ
         StopAllCoroutines();
         
-        // 2. ОТКЛЮЧАЕМ КОМПОНЕНТЫ НА КОРНЕ
         Transform root = transform.root;
         
         NavMeshAgent rootAgent = root.GetComponent<NavMeshAgent>();
@@ -316,63 +315,40 @@ public class Enemy : MonoBehaviour
         Collider rootCollider = root.GetComponent<Collider>();
         if (rootCollider != null) rootCollider.enabled = false;
         
-        // 3. СТАВИМ КОРЕНЬ НА y = 0
-        Vector3 groundPos = root.position;
-        groundPos.y = 0f;
-        root.position = groundPos;
-        
-        Debug.Log($"Корень на y = 0: {root.position}");
-        
-        // 4. СБРАСЫВАЕМ ФЛАГИ
         isTakingHit = false;
         isAttacking = false;
         blockAttackAfterHit = false;
         
-        // 5. АНИМАЦИЯ СМЕРТИ
         if (enemyAnimator != null)
-        {
-            enemyAnimator.animator.ResetTrigger("Attack");
-            enemyAnimator.animator.ResetTrigger("Hit");
             enemyAnimator.TriggerDeath();
-            Debug.Log("Анимация смерти запущена");
-        }
         
-        // 6. ЭФФЕКТЫ
         if (deathEffect != null)
             Instantiate(deathEffect, root.position, Quaternion.identity);
         
         if (deathSound != null && audioSource != null)
             audioSource.PlayOneShot(deathSound);
         
-        // 7. ЛУТ - НЕ СПАВНИМ СРАЗУ, А ЧЕРЕЗ КОРОУТИНУ
-        StartCoroutine(DestroyAndDropLoot());
-    }
-    
-    IEnumerator DestroyAndDropLoot()
-    {
-        // Ждем 3 секунды (пока идет анимация смерти)
-        yield return new WaitForSeconds(3f);
+        DropLoot();
         
-        // 1. СПАВНИМ ЛУТ
-        if (lootPrefab != null && Random.value <= lootDropChance)
-        {
-            Vector3 rootPos = transform.root.position;
-            Vector3 lootPosition = new Vector3(rootPos.x, 0.05f, rootPos.z);
-            Instantiate(lootPrefab, lootPosition, Quaternion.identity);
-            
-            if (enableDebugLogs) Debug.Log($"Лут спавнен на: {lootPosition}");
-        }
+        this.enabled = false;
         
-        // 2. УНИЧТОЖАЕМ КОРЕНЬ
-        Transform root = transform.root;
-        Destroy(root.gameObject);
-        
-        if (enableDebugLogs) Debug.Log("Враг уничтожен");
+        // ВРАГ ИСЧЕЗАЕТ ЧЕРЕЗ 6.3 СЕКУНДЫ
+        Destroy(root.gameObject, 6.3f);
     }
     
     void DropLoot()
     {
-        // Метод больше не используется, весь код перенесен в DestroyAndDropLoot
+        if (lootPrefab == null) return;
+        if (Random.value > lootDropChance) return;
+        
+        Vector3 rootPos = transform.root.position;
+        Vector3 lootPosition = new Vector3(rootPos.x, 0.05f, rootPos.z);
+        Instantiate(lootPrefab, lootPosition, Quaternion.identity);
+    }
+    
+    public float GetCurrentHealth()
+    {
+        return currentHealth;
     }
     
     void OnDrawGizmosSelected()

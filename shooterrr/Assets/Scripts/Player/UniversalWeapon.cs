@@ -46,7 +46,7 @@ public class MedievalWeapon : MonoBehaviour
     private float aimingShakeTimer = 0f;
     private Vector3 originalCameraPos;
     
-    [Header("Weapon Position Sway (Покачивание позиции)")]
+    [Header("Weapon Position Sway")]
     public bool enablePositionSway = true;
     public float positionSwayAmount = 0.02f;
     public float positionSwaySmoothness = 6f;
@@ -55,22 +55,21 @@ public class MedievalWeapon : MonoBehaviour
     private Vector3 initialPosition;
     private Vector3 swayPosition;
     
-    [Header("Weapon Rotation Sway (Покачивание поворота)")]
+    [Header("Weapon Rotation Sway")]
     public bool enableRotationSway = true;
-    public float rotationSwayAmount = 2f;        // Сила поворота
-    public float rotationSwaySmoothness = 8f;    // Плавность
-    public float rotationSwayClampX = 3f;        // Максимальный поворот по X
-    public float rotationSwayClampY = 3f;        // Максимальный поворот по Y
-    public float rotationSwayClampZ = 1.5f;      // Максимальный поворот по Z (наклон)
+    public float rotationSwayAmount = 2f;
+    public float rotationSwaySmoothness = 8f;
+    public float rotationSwayClampX = 3f;
+    public float rotationSwayClampY = 3f;
+    public float rotationSwayClampZ = 1.5f;
     private Quaternion initialRotation;
     private Quaternion swayRotation;
     
-    [Header("Weapon Inertia (Инерция)")]
+    [Header("Weapon Inertia")]
     public bool enableInertia = true;
-    public float inertiaAmount = 0.5f;           // Сила инерции
-    public float inertiaSmoothness = 5f;         // Плавность инерции
+    public float inertiaAmount = 0.5f;
+    public float inertiaSmoothness = 5f;
     private Vector3 inertiaVelocity;
-    private Vector3 lastMousePosition;
     
     [Header("Thrown Weapons")]
     public GameObject thrownPrefab;
@@ -146,7 +145,6 @@ public class MedievalWeapon : MonoBehaviour
         if (weaponType == WeaponType.Thrown)
             currentThrown = thrownCount;
         
-        // Сохраняем начальную позицию и поворот для Sway
         initialPosition = transform.localPosition;
         swayPosition = initialPosition;
         initialRotation = transform.localRotation;
@@ -244,7 +242,6 @@ public class MedievalWeapon : MonoBehaviour
     
     void HandleSway()
     {
-        // === ПОЗИЦИОННЫЙ SWAY ===
         if (enablePositionSway)
         {
             float mouseX = Input.GetAxis("Mouse X");
@@ -267,7 +264,6 @@ public class MedievalWeapon : MonoBehaviour
             transform.localPosition = swayPosition;
         }
         
-        // === РОТАЦИОННЫЙ SWAY (ПОВОРОТ ОРУЖИЯ) ===
         if (enableRotationSway && weaponType == WeaponType.Crossbow)
         {
             float mouseX = Input.GetAxis("Mouse X");
@@ -275,7 +271,6 @@ public class MedievalWeapon : MonoBehaviour
             
             float currentMultiplier = isAiming ? 0.3f : 1f;
             
-            // Рассчитываем поворот
             float rotX = Mathf.Clamp(-mouseY * rotationSwayAmount * currentMultiplier, -rotationSwayClampX, rotationSwayClampX);
             float rotY = Mathf.Clamp(mouseX * rotationSwayAmount * currentMultiplier, -rotationSwayClampY, rotationSwayClampY);
             float rotZ = Mathf.Clamp(-mouseX * rotationSwayAmount * 0.3f * currentMultiplier, -rotationSwayClampZ, rotationSwayClampZ);
@@ -292,7 +287,6 @@ public class MedievalWeapon : MonoBehaviour
         }
         else
         {
-            // Для другого оружия - возвращаем в исходное положение
             if (enableRotationSway)
             {
                 swayRotation = Quaternion.Slerp(swayRotation, initialRotation, Time.deltaTime * rotationSwaySmoothness);
@@ -305,11 +299,9 @@ public class MedievalWeapon : MonoBehaviour
     {
         if (!enableInertia || weaponType != WeaponType.Crossbow) return;
         
-        // Получаем скорость движения мыши
         float mouseX = Input.GetAxis("Mouse X");
         float mouseY = Input.GetAxis("Mouse Y");
         
-        // Добавляем инерцию к позиции
         Vector3 inertiaTarget = new Vector3(
             -mouseX * inertiaAmount * 0.01f,
             -mouseY * inertiaAmount * 0.01f,
@@ -318,7 +310,6 @@ public class MedievalWeapon : MonoBehaviour
         
         inertiaVelocity = Vector3.Lerp(inertiaVelocity, inertiaTarget, Time.deltaTime * inertiaSmoothness);
         
-        // Применяем инерцию к позиции (дополнительно к основному sway)
         if (enablePositionSway)
         {
             Vector3 inertiaOffset = new Vector3(inertiaVelocity.x, inertiaVelocity.y, 0f);
@@ -407,7 +398,6 @@ public class MedievalWeapon : MonoBehaviour
         if (animator != null)
             animator.SetTrigger("CrossbowShoot");
         
-        // Сбрасываем sway при выстреле (эффект отдачи)
         if (enablePositionSway)
         {
             StartCoroutine(ShootRecoilSway());
@@ -430,7 +420,12 @@ public class MedievalWeapon : MonoBehaviour
                 RaycastHit hit;
                 if (Physics.Raycast(playerCamera.transform.position, direction, out hit, crossbowRange))
                 {
+                    Debug.Log($"=== RAYCAST ПОПАЛ В: {hit.transform.name} ===");
                     HandleRangedHit(hit.transform, hit.point, hit.normal);
+                }
+                else
+                {
+                    Debug.Log("=== RAYCAST НИКУДА НЕ ПОПАЛ ===");
                 }
             }
         }
@@ -440,13 +435,11 @@ public class MedievalWeapon : MonoBehaviour
     
     IEnumerator ShootRecoilSway()
     {
-        // Эффект отдачи при выстреле (рывок вверх)
         Vector3 recoilPos = new Vector3(0, 0.01f, -0.01f);
         transform.localPosition += recoilPos;
         
         yield return new WaitForSeconds(0.05f);
         
-        // Возврат
         float elapsed = 0f;
         float duration = 0.1f;
         Vector3 startPos = transform.localPosition;
@@ -538,7 +531,7 @@ public class MedievalWeapon : MonoBehaviour
         RaycastHit hit;
         if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out hit, meleeRange, meleeLayers))
         {
-            Debug.Log($"Ближняя атака попала в: {hit.transform.name}");
+            Debug.Log($"=== MELEE ПОПАЛ В: {hit.transform.name} ===");
             
             if (hitEffect != null)
             {
@@ -557,7 +550,7 @@ public class MedievalWeapon : MonoBehaviour
         {
             if (collider.transform != transform && collider.transform != transform.root)
             {
-                Debug.Log($"Ближняя атака (сфера) попала в: {collider.name}");
+                Debug.Log($"=== MELEE SPHERE ПОПАЛ В: {collider.name} ===");
                 HandleMeleeHit(collider.transform, collider.transform.position, Vector3.up);
             }
         }
@@ -566,22 +559,92 @@ public class MedievalWeapon : MonoBehaviour
             StartCoroutine(SlowMovement());
     }
     
+    // ========== ОБРАБОТКА УРОНА ==========
+    
     void HandleRangedHit(Transform target, Vector3 hitPoint, Vector3 normal)
     {
-        Enemy enemy = target.GetComponent<Enemy>();
-        if (enemy != null)
+        Debug.Log($"=== ОБРАБОТКА RANGED HIT ===");
+        Debug.Log($"Цель: {target.name}, тег: {target.tag}");
+        Debug.Log($"Корень: {target.root.name}, тег корня: {target.root.tag}");
+        
+        // 1. ПРОВЕРКА ПО ТЕГУ КОРНЯ
+        if (target.root.CompareTag("Boss"))
         {
-            enemy.TakeDamage(damage, hitPoint);
+            Debug.Log(">>> НАШЕЛ БОССА ПО ТЕГУ КОРНЯ!");
+            BossEnemy boss = target.root.GetComponent<BossEnemy>();
+            if (boss != null)
+            {
+                Debug.Log($">>> ЗОВУ TakeDamage у босса! Урон: {damage}");
+                boss.TakeDamage(damage, hitPoint);
+                return;
+            }
+            else
+            {
+                Debug.LogError(">>> ЕСТЬ ТЕГ Boss, НО НЕТ КОМПОНЕНТА BossEnemy!");
+            }
+        }
+        
+        if (target.root.CompareTag("Enemy"))
+        {
+            Debug.Log(">>> НАШЕЛ ВРАГА ПО ТЕГУ КОРНЯ!");
+            Enemy enemy = target.root.GetComponent<Enemy>();
+            if (enemy != null)
+            {
+                Debug.Log($">>> ЗОВУ TakeDamage у врага! Урон: {damage}");
+                enemy.TakeDamage(damage, hitPoint);
+                return;
+            }
+            else
+            {
+                Debug.LogError(">>> ЕСТЬ ТЕГ Enemy, НО НЕТ КОМПОНЕНТА Enemy!");
+            }
+        }
+        
+        // 2. ПРОВЕРКА НАПРЯМУЮ
+        BossEnemy bossDirect = target.GetComponent<BossEnemy>();
+        if (bossDirect != null)
+        {
+            Debug.Log(">>> НАШЕЛ БОССА НАПРЯМУЮ!");
+            bossDirect.TakeDamage(damage, hitPoint);
             return;
         }
         
+        Enemy enemyDirect = target.GetComponent<Enemy>();
+        if (enemyDirect != null)
+        {
+            Debug.Log(">>> НАШЕЛ ВРАГА НАПРЯМУЮ!");
+            enemyDirect.TakeDamage(damage, hitPoint);
+            return;
+        }
+        
+        // 3. ПРОВЕРКА НА РОДИТЕЛЯ (если коллайдер на дочернем объекте)
+        BossEnemy bossInParent = target.GetComponentInParent<BossEnemy>();
+        if (bossInParent != null)
+        {
+            Debug.Log(">>> НАШЕЛ БОССА В РОДИТЕЛЕ!");
+            bossInParent.TakeDamage(damage, hitPoint);
+            return;
+        }
+        
+        Enemy enemyInParent = target.GetComponentInParent<Enemy>();
+        if (enemyInParent != null)
+        {
+            Debug.Log(">>> НАШЕЛ ВРАГА В РОДИТЕЛЕ!");
+            enemyInParent.TakeDamage(damage, hitPoint);
+            return;
+        }
+        
+        // 4. РАЗРУШАЕМЫЙ ОБЪЕКТ
         DestructibleObject destructible = target.GetComponent<DestructibleObject>();
         if (destructible != null)
         {
+            Debug.Log(">>> РАЗРУШАЕМЫЙ ОБЪЕКТ!");
             destructible.TakeDamage(damage);
             return;
         }
         
+        // 5. ЭФФЕКТ В СТЕНУ
+        Debug.Log($">>> НЕ ВРАГ! Попадание в {target.name}");
         if (impactEffect != null)
         {
             GameObject impact = Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
@@ -591,20 +654,62 @@ public class MedievalWeapon : MonoBehaviour
     
     void HandleMeleeHit(Transform target, Vector3 hitPoint, Vector3 normal)
     {
-        Enemy enemy = target.GetComponent<Enemy>();
-        if (enemy != null)
+        Debug.Log($"=== ОБРАБОТКА MELEE HIT ===");
+        Debug.Log($"Цель: {target.name}, тег: {target.tag}");
+        Debug.Log($"Корень: {target.root.name}, тег корня: {target.root.tag}");
+        
+        // 1. ПРОВЕРКА ПО ТЕГУ КОРНЯ
+        if (target.root.CompareTag("Boss"))
         {
-            enemy.TakeDamage(meleeDamage, hitPoint);
+            Debug.Log(">>> MELEE: НАШЕЛ БОССА ПО ТЕГУ КОРНЯ!");
+            BossEnemy boss = target.root.GetComponent<BossEnemy>();
+            if (boss != null)
+            {
+                Debug.Log($">>> MELEE: ЗОВУ TakeDamage у босса! Урон: {meleeDamage}");
+                boss.TakeDamage(meleeDamage, hitPoint);
+                return;
+            }
+        }
+        
+        if (target.root.CompareTag("Enemy"))
+        {
+            Debug.Log(">>> MELEE: НАШЕЛ ВРАГА ПО ТЕГУ КОРНЯ!");
+            Enemy enemy = target.root.GetComponent<Enemy>();
+            if (enemy != null)
+            {
+                Debug.Log($">>> MELEE: ЗОВУ TakeDamage у врага! Урон: {meleeDamage}");
+                enemy.TakeDamage(meleeDamage, hitPoint);
+                return;
+            }
+        }
+        
+        // 2. ПРОВЕРКА НАПРЯМУЮ
+        BossEnemy bossDirect = target.GetComponent<BossEnemy>();
+        if (bossDirect != null)
+        {
+            Debug.Log(">>> MELEE: НАШЕЛ БОССА НАПРЯМУЮ!");
+            bossDirect.TakeDamage(meleeDamage, hitPoint);
             return;
         }
         
+        Enemy enemyDirect = target.GetComponent<Enemy>();
+        if (enemyDirect != null)
+        {
+            Debug.Log(">>> MELEE: НАШЕЛ ВРАГА НАПРЯМУЮ!");
+            enemyDirect.TakeDamage(meleeDamage, hitPoint);
+            return;
+        }
+        
+        // 3. РАЗРУШАЕМЫЙ ОБЪЕКТ
         DestructibleObject destructible = target.GetComponent<DestructibleObject>();
         if (destructible != null)
         {
+            Debug.Log(">>> MELEE: РАЗРУШАЕМЫЙ ОБЪЕКТ!");
             destructible.TakeDamage(meleeDamage);
             return;
         }
         
+        Debug.Log($">>> MELEE: НЕ ВРАГ! Попадание в {target.name}");
         if (impactEffect != null)
         {
             GameObject impact = Instantiate(impactEffect, hitPoint, Quaternion.LookRotation(normal));
@@ -671,7 +776,6 @@ public class MedievalWeapon : MonoBehaviour
             }
         }
         
-        // Сбрасываем позицию и поворот Sway при смене оружия
         swayPosition = initialPosition;
         swayRotation = initialRotation;
         transform.localPosition = initialPosition;

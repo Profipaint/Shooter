@@ -4,8 +4,6 @@ using System.Collections;
 
 public class BossEnemy : MonoBehaviour
 {
-    [Header("=== BOSS SETTINGS ===")]
-    
     [Header("Health")]
     public float maxHealth = 200f;
     private float currentHealth;
@@ -25,34 +23,26 @@ public class BossEnemy : MonoBehaviour
     public float normalAttackDuration = 0.8f;
     private float nextNormalAttackTime = 0f;
     
-    [Header("=== SPECIAL ATTACK (TopAttack) ===")]
+    [Header("Special Attack")]
     public bool enableSpecialAttack = true;
     public float specialDamage = 40f;
     public float specialAttackCooldown = 5f;
-    public float specialAttackDelay = 0.8f;
-    public float specialAttackDuration = 1.5f;
     public float specialAttackRange = 3.5f;
     public float specialAttackChance = 0.3f;
     public float specialAttackWindup = 0.5f;
-    public float specialAttackSpeedMultiplier = 4f;  // Увеличение скорости в 4 раза!
+    public float specialAttackDuration = 1.5f;
+    public float specialAttackSpeedMultiplier = 4f;
     private float nextSpecialAttackTime = 0f;
     private bool isSpecialAttacking = false;
-    private bool isSpecialCharging = false;           // Фаза зарядки перед супер атакой
+    private bool isSpecialCharging = false;
     
     [Header("Special Attack Effects")]
-    public GameObject specialAttackEffect;
     public GameObject specialAttackImpactEffect;
     public AudioClip specialAttackSound;
     public AudioClip specialChargeSound;
     
     [Header("Animation")]
-    public Animator animator;
-    public string speedParam = "Speed";
-    public string walkingParam = "walking";
-    public string attackParam = "attack";
-    public string topAttackParam = "TopAttack";
-    public string hitParam = "hit";
-    public string dyingParam = "dying";
+    public BossEnemyAnimator bossAnimator;
     
     [Header("Effects")]
     public GameObject deathEffect;
@@ -64,7 +54,6 @@ public class BossEnemy : MonoBehaviour
     
     [Header("Loot")]
     public GameObject lootPrefab;
-    public int lootAmount = 20;
     public float lootDropChance = 1f;
     
     [Header("States")]
@@ -74,7 +63,7 @@ public class BossEnemy : MonoBehaviour
     private bool isTakingHit = false;
     private bool blockAttackAfterHit = false;
     private BossState currentState = BossState.Idle;
-    private float originalMoveSpeed;  // Сохраняем оригинальную скорость
+    private float originalMoveSpeed;
     
     private enum BossState
     {
@@ -97,26 +86,16 @@ public class BossEnemy : MonoBehaviour
             agent.stoppingDistance = stoppingDistance;
         }
         
-        // Сохраняем оригинальную скорость
         originalMoveSpeed = moveSpeed;
         
-        if (animator == null)
-            animator = GetComponentInChildren<Animator>();
-        
-        if (animator == null)
-            Debug.LogWarning("Animator не найден на дочерней модели!");
+        if (bossAnimator == null)
+            bossAnimator = GetComponentInChildren<BossEnemyAnimator>();
         
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
             audioSource = gameObject.AddComponent<AudioSource>();
         
         nextSpecialAttackTime = specialAttackCooldown * 0.5f;
-        
-        if (enableDebugLogs)
-        {
-            Debug.Log($"=== БОСС {name} ПОЯВИЛСЯ! ===");
-            Debug.Log($"Здоровье: {maxHealth}, Урон: {normalDamage}, Особый урон: {specialDamage}");
-        }
     }
     
     void Update()
@@ -124,27 +103,9 @@ public class BossEnemy : MonoBehaviour
         if (isDead || player == null) return;
         if (currentState == BossState.Dead) return;
         
-        // ВО ВРЕМЯ АНИМАЦИЙ БОСС НЕ ДВИГАЕТСЯ
         if (isTakingHit || isSpecialAttacking || isAttacking() || isSpecialCharging)
         {
             if (agent != null) agent.isStopped = true;
-            UpdateMovementAnimation(0f, false);
-            
-            // Если закончилась анимация атаки - возвращаемся к преследованию
-            if (isAttacking() && !isSpecialAttacking && !isTakingHit)
-            {
-                // Проверяем, закончилась ли анимация атаки
-                if (animator != null)
-                {
-                    AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
-                    if (!stateInfo.IsName("attack") && !stateInfo.IsName("TopAttack"))
-                    {
-                        currentState = BossState.Chasing;
-                        if (agent != null) agent.isStopped = false;
-                    }
-                }
-            }
-            
             return;
         }
         
@@ -172,7 +133,6 @@ public class BossEnemy : MonoBehaviour
                         Random.value < specialAttackChance)
                     {
                         currentState = BossState.SpecialAttacking;
-                        if (enableDebugLogs) Debug.Log($"БОСС: ОСОБАЯ АТАКА (TopAttack)!");
                     }
                     else
                     {
@@ -219,7 +179,6 @@ public class BossEnemy : MonoBehaviour
         if (isAttacking() || isTakingHit || isSpecialAttacking || isSpecialCharging) 
         {
             if (agent != null) agent.isStopped = true;
-            UpdateMovementAnimation(0f, false);
             return;
         }
         
@@ -227,15 +186,12 @@ public class BossEnemy : MonoBehaviour
         {
             agent.isStopped = false;
             agent.SetDestination(player.position);
-            float speed = agent.velocity.magnitude;
-            UpdateMovementAnimation(speed, speed > 0.1f);
         }
         else
         {
             Vector3 direction = (player.position - transform.position).normalized;
             transform.position += direction * moveSpeed * Time.deltaTime;
             transform.LookAt(player);
-            UpdateMovementAnimation(moveSpeed, true);
         }
     }
     
@@ -244,25 +200,16 @@ public class BossEnemy : MonoBehaviour
         return currentState == BossState.Attacking;
     }
     
-    void UpdateMovementAnimation(float speed, bool isWalking)
-    {
-        if (animator == null) return;
-        
-        animator.SetFloat(speedParam, speed);
-        animator.SetBool(walkingParam, isWalking);
-    }
-    
     void NormalAttack()
     {
         if (Time.time >= nextNormalAttackTime)
         {
             nextNormalAttackTime = Time.time + normalAttackCooldown;
             
-            // БОСС НЕ ДВИГАЕТСЯ ВО ВРЕМЯ АТАКИ
             if (agent != null) agent.isStopped = true;
             
-            if (animator != null)
-                animator.SetTrigger(attackParam);
+            if (bossAnimator != null)
+                bossAnimator.TriggerAttack();
             
             if (attackSound != null && audioSource != null)
                 audioSource.PlayOneShot(attackSound);
@@ -284,7 +231,6 @@ public class BossEnemy : MonoBehaviour
             if (playerHealth != null)
             {
                 playerHealth.TakeDamage(normalDamage);
-                if (enableDebugLogs) Debug.Log($"БОСС: Нанесен обычный урон {normalDamage}!");
             }
         }
     }
@@ -296,19 +242,15 @@ public class BossEnemy : MonoBehaviour
             isSpecialAttacking = true;
             nextSpecialAttackTime = Time.time + specialAttackCooldown;
             
-            // БОСС НЕ ДВИГАЕТСЯ ВО ВРЕМЯ АТАКИ
             if (agent != null) agent.isStopped = true;
             
-            // === УВЕЛИЧИВАЕМ СКОРОСТЬ В 4 РАЗА ПЕРЕД СУПЕР АТАКОЙ ===
             StartCoroutine(SpecialAttackSpeedBoost());
             
-            if (animator != null)
-                animator.SetTrigger(topAttackParam);
+            if (bossAnimator != null)
+                bossAnimator.TriggerTopAttack();
             
             if (specialChargeSound != null && audioSource != null)
                 audioSource.PlayOneShot(specialChargeSound);
-            
-            if (enableDebugLogs) Debug.Log($"БОСС: ЗАРЯЖАЕТ ОСОБУЮ АТАКУ (TopAttack)! Скорость увеличена в {specialAttackSpeedMultiplier}x!");
             
             StartCoroutine(SpecialAttackSequence());
         }
@@ -322,33 +264,24 @@ public class BossEnemy : MonoBehaviour
     {
         isSpecialCharging = true;
         
-        // Увеличиваем скорость
         float boostedSpeed = originalMoveSpeed * specialAttackSpeedMultiplier;
         moveSpeed = boostedSpeed;
         if (agent != null) agent.speed = boostedSpeed;
         
-        if (enableDebugLogs) Debug.Log($"БОСС: Скорость увеличена до {boostedSpeed}");
-        
-        // Ждем зарядку
         yield return new WaitForSeconds(specialAttackWindup);
         
         isSpecialCharging = false;
         
-        // Возвращаем скорость обратно после атаки
         yield return new WaitForSeconds(specialAttackDuration - specialAttackWindup);
         
         moveSpeed = originalMoveSpeed;
         if (agent != null) agent.speed = originalMoveSpeed;
-        
-        if (enableDebugLogs) Debug.Log($"БОСС: Скорость восстановлена до {originalMoveSpeed}");
     }
     
     IEnumerator SpecialAttackSequence()
     {
-        // Ждем зарядку
         yield return new WaitForSeconds(specialAttackWindup);
         
-        // Эффект удара
         if (specialAttackImpactEffect != null && player != null)
         {
             Instantiate(specialAttackImpactEffect, player.position + Vector3.up * 0.5f, Quaternion.identity);
@@ -357,7 +290,6 @@ public class BossEnemy : MonoBehaviour
         if (specialAttackSound != null && audioSource != null)
             audioSource.PlayOneShot(specialAttackSound);
         
-        // Наносим урон
         if (player != null)
         {
             float distanceToPlayer = Vector3.Distance(transform.position, player.position);
@@ -367,22 +299,14 @@ public class BossEnemy : MonoBehaviour
                 if (playerHealth != null)
                 {
                     playerHealth.TakeDamage(specialDamage);
-                    if (enableDebugLogs) Debug.Log($"БОСС: ОСОБАЯ АТАКА! Урон {specialDamage}!");
                 }
-            }
-            else
-            {
-                if (enableDebugLogs) Debug.Log($"БОСС: Особый удар промахнулся!");
             }
         }
         
-        // Ждем окончания анимации
         yield return new WaitForSeconds(specialAttackDuration - specialAttackWindup);
         
         isSpecialAttacking = false;
         currentState = BossState.Chasing;
-        
-        if (enableDebugLogs) Debug.Log($"БОСС: Особая атака завершена.");
     }
     
     IEnumerator EndAttackAfterDelay(float delay)
@@ -411,13 +335,11 @@ public class BossEnemy : MonoBehaviour
             return;
         }
         
-        // Прерываем особую атаку при получении урона
         if (isSpecialAttacking)
         {
             StopAllCoroutines();
             isSpecialAttacking = false;
             isSpecialCharging = false;
-            // Восстанавливаем скорость
             moveSpeed = originalMoveSpeed;
             if (agent != null) agent.speed = originalMoveSpeed;
             currentState = BossState.Chasing;
@@ -426,9 +348,8 @@ public class BossEnemy : MonoBehaviour
         blockAttackAfterHit = true;
         StartCoroutine(HitAnimationSequence());
         
-        // БОСС НЕ ДВИГАЕТСЯ ВО ВРЕМЯ АНИМАЦИИ ХИТА
-        if (animator != null)
-            animator.SetTrigger(hitParam);
+        if (bossAnimator != null)
+            bossAnimator.TriggerHit();
         
         if (hitEffect != null && hitPoint.HasValue)
             Instantiate(hitEffect, hitPoint.Value, Quaternion.identity);
@@ -443,7 +364,6 @@ public class BossEnemy : MonoBehaviour
     {
         isTakingHit = true;
         if (agent != null) agent.isStopped = true;
-        UpdateMovementAnimation(0f, false);
         yield return new WaitForSeconds(0.6f);
         isTakingHit = false;
     }
@@ -471,9 +391,6 @@ public class BossEnemy : MonoBehaviour
         
         StopAllCoroutines();
         
-        // Восстанавливаем скорость перед смертью
-        moveSpeed = originalMoveSpeed;
-        
         Transform root = transform.root;
         
         NavMeshAgent rootAgent = root.GetComponent<NavMeshAgent>();
@@ -486,22 +403,15 @@ public class BossEnemy : MonoBehaviour
         Collider rootCollider = root.GetComponent<Collider>();
         if (rootCollider != null) rootCollider.enabled = false;
         
-        Vector3 groundPos = root.position;
-        groundPos.y = 0f;
-        root.position = groundPos;
-        
         isTakingHit = false;
         isSpecialAttacking = false;
         isSpecialCharging = false;
         blockAttackAfterHit = false;
         
-        if (animator != null)
-        {
-            animator.ResetTrigger(attackParam);
-            animator.ResetTrigger(topAttackParam);
-            animator.ResetTrigger(hitParam);
-            animator.SetTrigger(dyingParam);
-        }
+        moveSpeed = originalMoveSpeed;
+        
+        if (bossAnimator != null)
+            bossAnimator.TriggerDeath();
         
         if (deathEffect != null)
             Instantiate(deathEffect, root.position, Quaternion.identity);
@@ -511,15 +421,10 @@ public class BossEnemy : MonoBehaviour
         
         DropLoot();
         
-        StartCoroutine(DestroyAfterDelay());
-    }
-    
-    IEnumerator DestroyAfterDelay()
-    {
-        yield return new WaitForSeconds(4f);
-        Transform root = transform.root;
-        Destroy(root.gameObject);
-        Debug.Log("БОСС уничтожен");
+        this.enabled = false;
+        
+        // БОСС ИСЧЕЗАЕТ ЧЕРЕЗ 8 СЕКУНД
+        Destroy(root.gameObject, 8f);
     }
     
     void DropLoot()
@@ -539,8 +444,6 @@ public class BossEnemy : MonoBehaviour
             );
             Instantiate(lootPrefab, rootPos + randomOffset, Quaternion.identity);
         }
-        
-        if (enableDebugLogs) Debug.Log($"БОСС: Выпало {lootCount} лута!");
     }
     
     public float GetCurrentHealth()
@@ -548,22 +451,14 @@ public class BossEnemy : MonoBehaviour
         return currentHealth;
     }
     
-    public float GetHealthPercentage()
-    {
-        return currentHealth / maxHealth;
-    }
-    
     void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, attackRange);
-        
         Gizmos.color = Color.magenta;
         Gizmos.DrawWireSphere(transform.position, specialAttackRange);
-        
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, detectionRange);
-        
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(transform.position, chaseRange);
     }
