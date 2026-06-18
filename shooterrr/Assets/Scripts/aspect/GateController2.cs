@@ -1,10 +1,11 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class GateController2 : MonoBehaviour
 {
     [Header("Gate Settings")]
-    public string gateKeeperTag = "GateKeeper2";  // СВОЙ ТЕГ
+    public List<GameObject> enemiesToKillList; // Список врагов (перетащи вручную)
     public float openAngle = 90f;
     public float openSpeed = 2f;
     
@@ -38,8 +39,8 @@ public class GateController2 : MonoBehaviour
             rightOpenRotation = rightClosedRotation * Quaternion.Euler(0, openAngle, 0);
         }
         
-        Debug.Log($"GateController2: калитка {gameObject.name} готова. Ждем врага с тегом '{gateKeeperTag}'");
-        InvokeRepeating(nameof(CheckGateKeeper), 2f, 2f);
+        Debug.Log($"GateController2: нужно убить {enemiesToKillList.Count} врагов");
+        InvokeRepeating(nameof(CheckEnemies), 1f, 1f);
     }
     
     void Update()
@@ -74,16 +75,30 @@ public class GateController2 : MonoBehaviour
         }
     }
     
-    void CheckGateKeeper()
+    void CheckEnemies()
     {
         if (isTriggered) return;
         if (isOpen) return;
         
-        GameObject gateKeeper = GameObject.FindGameObjectWithTag(gateKeeperTag);
+        int aliveCount = 0;
         
-        if (gateKeeper == null)
+        foreach (GameObject enemy in enemiesToKillList)
         {
-            Debug.Log($"GateKeeper2 '{gateKeeperTag}' НЕ НАЙДЕН! Открываем калитку2!");
+            if (enemy == null) continue;
+            
+            Enemy enemyScript = enemy.GetComponent<Enemy>();
+            if (enemyScript != null && enemyScript.enabled)
+            {
+                aliveCount++;
+            }
+        }
+        
+        int deadCount = enemiesToKillList.Count - aliveCount;
+        Debug.Log($"GateController2: убито {deadCount}/{enemiesToKillList.Count}");
+        
+        if (deadCount >= enemiesToKillList.Count)
+        {
+            Debug.Log("GateController2: все враги убиты! Открываю калитку!");
             OpenGate();
             isTriggered = true;
         }
@@ -103,6 +118,6 @@ public class GateController2 : MonoBehaviour
     
     void OnDestroy()
     {
-        CancelInvoke(nameof(CheckGateKeeper));
+        CancelInvoke(nameof(CheckEnemies));
     }
 }
